@@ -1,5 +1,7 @@
 # sharepasswordAzure (.NET 10)
 
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
+
 Secure password sharing for external users with:
 
 - Local admin login interface
