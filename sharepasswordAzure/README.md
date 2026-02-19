@@ -1,6 +1,7 @@
 # sharepasswordAzure (.NET 10)
 
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
+[![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
 Secure password sharing for external users with:
 
