@@ -1,0 +1,34 @@
+@model SharePassword.ViewModels.ShareAccessViewModel
+@{
+    ViewData["Title"] = "Access Shared Password";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h2>Access Shared Credentials</h2>
+        <p>Enter your email address and access code to view the shared password.</p>
+
+        <form asp-action="Access" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <input asp-for="Token" type="hidden" />
+
+            <div class="mb-3">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Code" class="form-label"></label>
+                <input asp-for="Code" class="form-control" />
+                <span asp-validation-for="Code" class="text-danger"></span>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Get Password</button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

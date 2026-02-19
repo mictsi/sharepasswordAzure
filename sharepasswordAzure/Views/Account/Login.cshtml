@@ -1,0 +1,39 @@
+@model SharePassword.ViewModels.AdminLoginViewModel
+@{
+    ViewData["Title"] = "Admin Login";
+    var oidcEnabled = (bool?)ViewData["OidcEnabled"] == true;
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <h2>Admin Login</h2>
+        <p>Sign in to manage password shares. Local login is restricted to localhost.</p>
+
+        @if (oidcEnabled)
+        {
+            <div class="mb-3">
+                <a class="btn btn-outline-primary" asp-action="ExternalLogin">Sign in with OIDC</a>
+            </div>
+            <hr />
+        }
+
+        <form asp-action="Login" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="mb-3">
+                <label asp-for="Username" class="form-label"></label>
+                <input asp-for="Username" class="form-control" />
+                <span asp-validation-for="Username" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Password" class="form-label"></label>
+                <input asp-for="Password" class="form-control" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

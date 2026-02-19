@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      AzureTableAudit__ServiceSasUrl: ${{ secrets.AZURE_TABLE_AUDIT_SAS_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+
+      - name: Restore
+        run: dotnet restore ./sharepasswordAzure.sln
+
+      - name: Build
+        run: dotnet build ./sharepasswordAzure.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test ./sharepasswordAzure.Tests/SharePassword.Tests.csproj --configuration Release --no-build -v minimal

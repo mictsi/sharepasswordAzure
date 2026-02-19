@@ -1,0 +1,25 @@
+@model SharePassword.ViewModels.AdminShareCreatedViewModel
+@{
+    ViewData["Title"] = "Share Created";
+}
+
+<h2>Password Share Created</h2>
+<div class="alert alert-warning">
+    Save the access code now. It is only shown once.
+</div>
+
+<dl class="row">
+    <dt class="col-sm-3">Recipient</dt>
+    <dd class="col-sm-9">@Model.RecipientEmail</dd>
+
+    <dt class="col-sm-3">Unique Link</dt>
+    <dd class="col-sm-9"><a href="@Model.ShareLink" target="_blank">@Model.ShareLink</a></dd>
+
+    <dt class="col-sm-3">Access Code</dt>
+    <dd class="col-sm-9"><strong>@Model.AccessCode</strong></dd>
+
+    <dt class="col-sm-3">Expires (UTC)</dt>
+    <dd class="col-sm-9">@Model.ExpiresAtUtc.ToString("u")</dd>
+</dl>
+
+<a class="btn btn-primary" asp-action="Index">Back to Dashboard</a>

@@ -1,0 +1,43 @@
+@model IReadOnlyCollection<SharePassword.Models.AuditLog>
+@{
+    ViewData["Title"] = "Audit Logs";
+}
+
+<h2>Audit Logs (Latest 500)</h2>
+
+<table class="table table-sm table-bordered">
+    <thead>
+        <tr>
+            <th>Time (UTC)</th>
+            <th>Actor</th>
+            <th>Operation</th>
+            <th>Success</th>
+            <th>Target</th>
+            <th>IP</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var log in Model)
+        {
+            <tr>
+                <td>@log.TimestampUtc.ToString("u")</td>
+                <td>@log.ActorType / @log.ActorIdentifier</td>
+                <td>@log.Operation</td>
+                <td>
+                    @if (log.Success)
+                    {
+                        <span class="badge bg-success">Yes</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger">No</span>
+                    }
+                </td>
+                <td>@log.TargetType @log.TargetId</td>
+                <td>@log.IpAddress</td>
+                <td>@log.Details</td>
+            </tr>
+        }
+    </tbody>
+</table>

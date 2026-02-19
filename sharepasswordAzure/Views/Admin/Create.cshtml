@@ -1,0 +1,42 @@
+@model SharePassword.ViewModels.AdminCreateShareViewModel
+@{
+    ViewData["Title"] = "Create Password Share";
+}
+
+<h2>Create Password Share</h2>
+<p>Provide recipient email, username, password, and expiry time.</p>
+
+<form asp-action="Create" method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="RecipientEmail" class="form-label"></label>
+        <input asp-for="RecipientEmail" class="form-control" />
+        <span asp-validation-for="RecipientEmail" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="SharedUsername" class="form-label"></label>
+        <input asp-for="SharedUsername" class="form-control" />
+        <span asp-validation-for="SharedUsername" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Password" class="form-label"></label>
+        <input asp-for="Password" class="form-control" />
+        <span asp-validation-for="Password" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ExpiryHours" class="form-label"></label>
+        <input asp-for="ExpiryHours" class="form-control" />
+        <span asp-validation-for="ExpiryHours" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create Share</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
