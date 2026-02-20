@@ -34,3 +34,6 @@ jobs:
 
       - name: Test
         run: dotnet test ./sharepasswordAzure.Tests/SharePassword.Tests.csproj --configuration Release -v minimal
+
+      - name: Build Docker image
+        run: docker build --file Dockerfile --tag sharepasswordazure:ci .
