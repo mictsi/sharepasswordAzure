@@ -33,8 +33,9 @@ A helper script is available at `scripts/provision-azure.ps1` to create required
 - Resource group
 - Storage account + audit table
 - Table Service SAS URL with permissions `rwdlacu`
-- Key Vault and SAS secret storage
+- Key Vault for application secret storage
 - Key Vault secret permissions for the app principal (existing principal or newly created app registration)
+- Direct output of app config values (including SAS URL unless `-NoSecretOutput` is used)
 
 Example:
 

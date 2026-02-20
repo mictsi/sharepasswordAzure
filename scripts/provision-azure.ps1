@@ -12,7 +12,6 @@ param(
     [string]$StorageAccountName = "",
     [string]$KeyVaultName = "",
     [string]$AuditTableName = "auditlogs",
-    [string]$SasSecretName = "azure-table-audit-service-sas-url",
     [int]$SasValidityDays = 365,
 
     # If provided, this principal will be granted KV read access (Secrets User)
@@ -56,30 +55,13 @@ function ConvertTo-NormalizedPrefix {
     return $value
 }
 
-function Invoke-WithRetry {
-    param(
-        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
-        [int]$MaxAttempts = 12,
-        [int]$DelaySeconds = 5,
-        [string]$OperationName = "operation"
-    )
-
-    for ($i = 1; $i -le $MaxAttempts; $i++) {
-        try {
-            return & $ScriptBlock
-        }
-        catch {
-            if ($i -eq $MaxAttempts) { throw }
-            Start-Sleep -Seconds $DelaySeconds
-        }
-    }
-}
-
 # Ensure authenticated
 try { Invoke-Az -Args @("account","show","--output","none") | Out-Null }
 catch { throw "Azure CLI is not authenticated. Run 'az login' first." }
 
 Invoke-Az -Args @("account","set","--subscription",$SubscriptionId) | Out-Null
+
+$isKeyVaultNameExplicit = -not [string]::IsNullOrWhiteSpace($KeyVaultName)
 
 $prefix = ConvertTo-NormalizedPrefix -InputPrefix $NamePrefix
 $suffix = New-RandomSuffix
@@ -163,14 +145,77 @@ if ([string]::IsNullOrWhiteSpace($sasToken)) { throw "Failed to generate SAS tok
 $serviceSasUrl = "https://$StorageAccountName.table.core.windows.net/?$sasToken"
 
 Write-Host "Creating key vault '$KeyVaultName' (RBAC enabled)..." -ForegroundColor Cyan
-Invoke-Az -Args @(
-    "keyvault","create",
-    "--name",$KeyVaultName,
-    "--resource-group",$ResourceGroupName,
-    "--location",$Location,
-    "--enable-rbac-authorization","true",
-    "--output","none"
-) | Out-Null
+$existingKvResourceGroup = ""
+try {
+    $existingKvResourceGroup = (Invoke-Az -Args @(
+        "keyvault","show",
+        "--name",$KeyVaultName,
+        "--query","resourceGroup",
+        "--output","tsv"
+    )).Trim()
+} catch {
+    $existingKvResourceGroup = ""
+}
+
+if (-not [string]::IsNullOrWhiteSpace($existingKvResourceGroup)) {
+    if ($existingKvResourceGroup -ieq $ResourceGroupName) {
+        Write-Host "Key vault '$KeyVaultName' already exists in resource group '$ResourceGroupName'. Reusing it." -ForegroundColor Yellow
+    }
+    else {
+        if ($isKeyVaultNameExplicit) {
+            throw "KeyVaultName '$KeyVaultName' already exists in resource group '$existingKvResourceGroup'. Choose a different -KeyVaultName or omit it to auto-generate a unique name."
+        }
+
+        $created = $false
+        for ($attempt = 1; $attempt -le 10; $attempt++) {
+            $candidateSuffix = New-RandomSuffix
+            $candidateName = "$prefix-kv-$candidateSuffix"
+            if ($candidateName.Length -gt 24) { $candidateName = $candidateName.Substring(0, 24) }
+
+            $candidateExists = $false
+            try {
+                $existing = (Invoke-Az -Args @(
+                    "keyvault","show",
+                    "--name",$candidateName,
+                    "--query","name",
+                    "--output","tsv"
+                )).Trim()
+                $candidateExists = -not [string]::IsNullOrWhiteSpace($existing)
+            } catch {
+                $candidateExists = $false
+            }
+
+            if ($candidateExists) { continue }
+
+            $KeyVaultName = $candidateName
+            Write-Host "Key vault name already in use globally; using '$KeyVaultName' instead." -ForegroundColor Yellow
+            Invoke-Az -Args @(
+                "keyvault","create",
+                "--name",$KeyVaultName,
+                "--resource-group",$ResourceGroupName,
+                "--location",$Location,
+                "--enable-rbac-authorization","true",
+                "--output","none"
+            ) | Out-Null
+            $created = $true
+            break
+        }
+
+        if (-not $created) {
+            throw "Could not find a unique Key Vault name after multiple attempts. Rerun with an explicit unique -KeyVaultName."
+        }
+    }
+}
+else {
+    Invoke-Az -Args @(
+        "keyvault","create",
+        "--name",$KeyVaultName,
+        "--resource-group",$ResourceGroupName,
+        "--location",$Location,
+        "--enable-rbac-authorization","true",
+        "--output","none"
+    ) | Out-Null
+}
 
 $kvId = (Invoke-Az -Args @(
     "keyvault","show",
@@ -181,61 +226,6 @@ $kvId = (Invoke-Az -Args @(
 )).Trim()
 
 if ([string]::IsNullOrWhiteSpace($kvId)) { throw "Failed to resolve Key Vault resource id." }
-
-# Identify current caller (user or service principal)
-$currentObjectId = ""
-$currentPrincipalType = ""
-try {
-    $currentObjectId = (& az ad signed-in-user show --query id --output tsv 2>$null).Trim()
-    if (-not [string]::IsNullOrWhiteSpace($currentObjectId)) { $currentPrincipalType = "User" }
-} catch { }
-
-if ([string]::IsNullOrWhiteSpace($currentObjectId)) {
-    try {
-        $currentObjectId = (& az ad signed-in-user show --query id --output tsv 2>$null).Trim()
-    } catch { }
-
-    # If not a user session (e.g., az login --service-principal), use the signed-in principal from account
-    # This yields the appId; we then look up the SP object id.
-    $signedInAppId = (Invoke-Az -Args @("account","show","--query","user.name","--output","tsv")).Trim()
-    if ($signedInAppId -match "^[0-9a-fA-F-]{36}$") {
-        $currentObjectId = (Invoke-Az -Args @("ad","sp","show","--id",$signedInAppId,"--query","id","--output","tsv")).Trim()
-        $currentPrincipalType = "ServicePrincipal"
-    }
-}
-
-if ([string]::IsNullOrWhiteSpace($currentObjectId)) {
-    throw "Could not determine current caller object id. Ensure you are logged in with az and have AAD read access."
-}
-
-# RBAC: grant the current caller ability to set secrets on this vault (required for this script)
-# Requires the caller to have permission to create role assignments at this scope (Owner or User Access Administrator).
-Write-Host "Assigning 'Key Vault Secrets Officer' on vault to current caller ($currentPrincipalType)..." -ForegroundColor Cyan
-try {
-    Invoke-Az -Args @(
-        "role","assignment","create",
-        "--assignee-object-id",$currentObjectId,
-        "--assignee-principal-type",$currentPrincipalType,
-        "--role","Key Vault Secrets Officer",
-        "--scope",$kvId,
-        "--output","none"
-    ) | Out-Null
-}
-catch {
-    throw "Failed to create RBAC role assignment for the current caller. The identity running this script must have 'Owner' or 'User Access Administrator' at the vault/resource-group/subscription scope."
-}
-
-# Role assignment propagation can take time; retry secret set
-Write-Host "Storing Table Service SAS URL secret '$SasSecretName' in Key Vault..." -ForegroundColor Cyan
-Invoke-WithRetry -OperationName "keyvault secret set" -ScriptBlock {
-    Invoke-Az -Args @(
-        "keyvault","secret","set",
-        "--vault-name",$KeyVaultName,
-        "--name",$SasSecretName,
-        "--value",$serviceSasUrl,
-        "--output","none"
-    ) | Out-Null
-} | Out-Null
 
 $principalObjectId = $ExistingPrincipalObjectId
 $appClientId = ""
@@ -309,7 +299,7 @@ $result = [PSCustomObject]@{
     keyVaultName      = $KeyVaultName
     keyVaultUri       = $keyVaultUri
     keyVaultResourceId= $kvId
-    sasSecretName     = $SasSecretName
+    azureTableServiceSasUrl = $(if ($NoSecretOutput) { "" } else { $serviceSasUrl })
     servicePrincipalObjectId = $principalObjectId
     tenantId          = $tenantId
     clientId          = $appClientId
@@ -319,12 +309,19 @@ $result = [PSCustomObject]@{
         AzureKeyVault__TenantId           = $tenantId
         AzureKeyVault__ClientId           = $appClientId
         AzureKeyVault__ClientSecret       = $(if ($NoSecretOutput) { "" } else { $appClientSecret })
-        AzureTableAudit__ServiceSasSecret = $SasSecretName
+        AzureTableAudit__ServiceSasUrl    = $(if ($NoSecretOutput) { "" } else { $serviceSasUrl })
         AzureTableAudit__TableName        = $AuditTableName
         AzureTableAudit__PartitionKey     = "audit"
     }
-    getSasFromKeyVaultCommand = "az keyvault secret show --vault-name $KeyVaultName --name $SasSecretName --query value -o tsv"
 }
 
 Write-Host "Provisioning completed." -ForegroundColor Green
+Write-Host "App configuration values:" -ForegroundColor Yellow
+Write-Host "  AzureKeyVault__VaultUri=$keyVaultUri"
+Write-Host "  AzureKeyVault__TenantId=$tenantId"
+Write-Host "  AzureKeyVault__ClientId=$appClientId"
+Write-Host "  AzureKeyVault__ClientSecret=$(if ($NoSecretOutput) { '<hidden>' } else { $appClientSecret })"
+Write-Host "  AzureTableAudit__ServiceSasUrl=$(if ($NoSecretOutput) { '<hidden>' } else { $serviceSasUrl })"
+Write-Host "  AzureTableAudit__TableName=$AuditTableName"
+Write-Host "  AzureTableAudit__PartitionKey=audit"
 $result | ConvertTo-Json -Depth 6
