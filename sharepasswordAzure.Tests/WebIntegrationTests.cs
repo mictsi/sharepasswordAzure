@@ -54,6 +54,49 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ExternalUserCanDeleteRetrievedPassword_AfterViewingCredential()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var recipientEmail = $"recipient-{Guid.NewGuid():N}@example.com";
+        const string sharedUsername = "external.user";
+        const string sharedPassword = "S3cur3Password!";
+
+        var created = await CreateShareAsync(client, recipientEmail, sharedUsername, sharedPassword);
+        var accessResponse = await AccessShareAsync(client, created.SharePath, recipientEmail, created.AccessCode);
+        var credentialHtml = await accessResponse.Content.ReadAsStringAsync();
+
+        accessResponse.EnsureSuccessStatusCode();
+
+        var antiForgery = ExtractAntiForgeryToken(credentialHtml);
+        var shareId = ExtractShareIdFromCredentialPage(credentialHtml);
+
+        var deleteRequest = new HttpRequestMessage(HttpMethod.Post, "/share/deleteafterretrieve")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgery,
+                ["ShareId"] = shareId,
+                ["RecipientEmail"] = recipientEmail
+            })
+        };
+
+        deleteRequest.Headers.Referrer = new Uri($"https://localhost{created.SharePath}");
+        var deleteResponse = await client.SendAsync(deleteRequest);
+        var deleteHtml = await deleteResponse.Content.ReadAsStringAsync();
+
+        deleteResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Password Deleted", deleteHtml, StringComparison.OrdinalIgnoreCase);
+
+        var secondAccess = await AccessShareAsync(client, created.SharePath, recipientEmail, created.AccessCode);
+        var secondAccessHtml = await secondAccess.Content.ReadAsStringAsync();
+
+        secondAccess.EnsureSuccessStatusCode();
+        Assert.Contains("Invalid link or access details.", secondAccessHtml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AdminLoginFailure_IsAudited()
     {
         using var client = CreateClient();
@@ -207,6 +250,17 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         }
 
         return match.Groups["token"].Value;
+    }
+
+    private static string ExtractShareIdFromCredentialPage(string html)
+    {
+        var match = Regex.Match(html, "name=\"ShareId\"[^>]*value=\"(?<id>[^\"]+)\"");
+        if (!match.Success)
+        {
+            throw new InvalidOperationException("ShareId not found in credential page.");
+        }
+
+        return match.Groups["id"].Value;
     }
 }
 

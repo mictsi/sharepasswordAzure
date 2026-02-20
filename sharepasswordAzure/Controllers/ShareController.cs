@@ -39,7 +39,7 @@ public class ShareController : Controller
         }
 
         var email = model.Email.Trim().ToLowerInvariant();
-    var share = await _shareStore.GetShareByTokenAsync(model.Token);
+        var share = await _shareStore.GetShareByTokenAsync(model.Token);
 
         if (share is null)
         {
@@ -72,16 +72,42 @@ public class ShareController : Controller
         }
 
         share.LastAccessedAtUtc = DateTime.UtcNow;
-    await _shareStore.UpsertShareAsync(share);
+        await _shareStore.UpsertShareAsync(share);
 
         await _auditLogger.LogAsync("external-user", email, "share.access", true, "PasswordShare", share.Id.ToString());
 
         var decryptedPassword = _passwordCryptoService.Decrypt(share.EncryptedPassword);
         return View("Credential", new ShareCredentialViewModel
         {
+            ShareId = share.Id,
+            RecipientEmail = email,
             Username = share.SharedUsername,
             Password = decryptedPassword,
             ExpiresAtUtc = share.ExpiresAtUtc
         });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAfterRetrieve(Guid shareId, string recipientEmail)
+    {
+        if (shareId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        var normalizedEmail = (recipientEmail ?? string.Empty).Trim().ToLowerInvariant();
+        var share = await _shareStore.GetShareByIdAsync(shareId);
+
+        if (share is null)
+        {
+            await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", false, details: "Share not found.");
+            return View("Deleted");
+        }
+
+        await _shareStore.DeleteShareAsync(shareId);
+        await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", true, "PasswordShare", shareId.ToString());
+
+        return View("Deleted");
     }
 }
