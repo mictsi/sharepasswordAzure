@@ -20,6 +20,15 @@ param(
     # Skip app creation; if set and ExistingPrincipalObjectId is empty, no KV reader assignment is created.
     [switch]$SkipAppRegistration,
 
+    # Skip creating a separate OIDC app registration.
+    [switch]$SkipOidcAppRegistration,
+
+    # Base URL used to build OIDC redirect/logout callback URIs.
+    [string]$OidcRedirectBaseUrl = "http://localhost:5099",
+
+    [string]$OidcCallbackPath = "/signin-oidc",
+    [string]$OidcSignedOutCallbackPath = "/signout-callback-oidc",
+
     # If set, do not include secrets (clientSecret / SAS URL) in console output JSON.
     [switch]$NoSecretOutput
 )
@@ -53,6 +62,40 @@ function ConvertTo-NormalizedPrefix {
     $value = $value -replace "[^a-z0-9-]", ""
     if ([string]::IsNullOrWhiteSpace($value)) { $value = "sharepass" }
     return $value
+}
+
+function Join-Url {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BaseUrl,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
+        throw "OidcRedirectBaseUrl cannot be empty."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw "OIDC path cannot be empty."
+    }
+
+    $normalizedBaseUrl = $BaseUrl.Trim()
+    if ($normalizedBaseUrl.EndsWith("/")) {
+        $normalizedBaseUrl = $normalizedBaseUrl.TrimEnd('/')
+    }
+
+    if ($normalizedBaseUrl -notmatch "^https?://") {
+        throw "OidcRedirectBaseUrl must start with http:// or https://"
+    }
+
+    $normalizedPath = $Path.Trim()
+    if (-not $normalizedPath.StartsWith('/')) {
+        $normalizedPath = "/$normalizedPath"
+    }
+
+    return "$normalizedBaseUrl$normalizedPath"
 }
 
 # Ensure authenticated
@@ -232,6 +275,12 @@ $appClientId = ""
 $appClientSecret = ""
 $tenantId = (Invoke-Az -Args @("account","show","--query","tenantId","--output","tsv")).Trim()
 
+$oidcAuthority = "https://login.microsoftonline.com/$tenantId/v2.0"
+$oidcRedirectUri = Join-Url -BaseUrl $OidcRedirectBaseUrl -Path $OidcCallbackPath
+$oidcPostLogoutRedirectUri = Join-Url -BaseUrl $OidcRedirectBaseUrl -Path $OidcSignedOutCallbackPath
+$oidcAppClientId = ""
+$oidcAppClientSecret = ""
+
 if ([string]::IsNullOrWhiteSpace($principalObjectId) -and -not $SkipAppRegistration) {
     $appDisplayName = "$prefix-app-$suffix"
 
@@ -276,6 +325,34 @@ if ([string]::IsNullOrWhiteSpace($principalObjectId) -and -not $SkipAppRegistrat
     if ([string]::IsNullOrWhiteSpace($appClientSecret)) { throw "Failed to create client secret for app registration." }
 }
 
+if (-not $SkipOidcAppRegistration) {
+    $oidcAppDisplayName = "$prefix-oidc-$suffix"
+
+    Write-Host "Creating dedicated Microsoft Entra OIDC app registration '$oidcAppDisplayName'..." -ForegroundColor Cyan
+    $oidcAppClientId = (Invoke-Az -Args @(
+        "ad","app","create",
+        "--display-name",$oidcAppDisplayName,
+        "--sign-in-audience","AzureADMyOrg",
+        "--web-redirect-uris",$oidcRedirectUri,$oidcPostLogoutRedirectUri,
+        "--query","appId",
+        "--output","tsv"
+    )).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($oidcAppClientId)) { throw "Failed to create OIDC app registration." }
+
+    $oidcAppClientSecret = (Invoke-Az -Args @(
+        "ad","app","credential","reset",
+        "--id",$oidcAppClientId,
+        "--append",
+        "--display-name","sharepasswordAzure-oidc",
+        "--years","2",
+        "--query","password",
+        "--output","tsv"
+    )).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($oidcAppClientSecret)) { throw "Failed to create client secret for OIDC app registration." }
+}
+
 # RBAC: grant the app/principal read access to secrets (least privilege)
 if (-not [string]::IsNullOrWhiteSpace($principalObjectId)) {
     Write-Host "Assigning 'Key Vault Secrets User' on vault to principal '$principalObjectId'..." -ForegroundColor Cyan
@@ -304,6 +381,11 @@ $result = [PSCustomObject]@{
     tenantId          = $tenantId
     clientId          = $appClientId
     clientSecret      = $(if ($NoSecretOutput) { "" } else { $appClientSecret })
+    oidcAuthority     = $oidcAuthority
+    oidcClientId      = $oidcAppClientId
+    oidcClientSecret  = $(if ($NoSecretOutput) { "" } else { $oidcAppClientSecret })
+    oidcRedirectUri   = $oidcRedirectUri
+    oidcPostLogoutRedirectUri = $oidcPostLogoutRedirectUri
     appEnvironmentVariables = [PSCustomObject]@{
         AzureKeyVault__VaultUri           = $keyVaultUri
         AzureKeyVault__TenantId           = $tenantId
@@ -312,6 +394,13 @@ $result = [PSCustomObject]@{
         AzureTableAudit__ServiceSasUrl    = $(if ($NoSecretOutput) { "" } else { $serviceSasUrl })
         AzureTableAudit__TableName        = $AuditTableName
         AzureTableAudit__PartitionKey     = "audit"
+        OidcAuth__Enabled                 = $(if ([string]::IsNullOrWhiteSpace($oidcAppClientId)) { "false" } else { "true" })
+        OidcAuth__Authority               = $oidcAuthority
+        OidcAuth__ClientId                = $oidcAppClientId
+        OidcAuth__ClientSecret            = $(if ($NoSecretOutput) { "" } else { $oidcAppClientSecret })
+        OidcAuth__CallbackPath            = $OidcCallbackPath
+        OidcAuth__SignedOutCallbackPath   = $OidcSignedOutCallbackPath
+        OidcAuth__RequireHttpsMetadata    = "true"
     }
 }
 
@@ -324,4 +413,12 @@ Write-Host "  AzureKeyVault__ClientSecret=$(if ($NoSecretOutput) { '<hidden>' } 
 Write-Host "  AzureTableAudit__ServiceSasUrl=$(if ($NoSecretOutput) { '<hidden>' } else { $serviceSasUrl })"
 Write-Host "  AzureTableAudit__TableName=$AuditTableName"
 Write-Host "  AzureTableAudit__PartitionKey=audit"
+Write-Host "  OidcAuth__Enabled=$(if ([string]::IsNullOrWhiteSpace($oidcAppClientId)) { 'false' } else { 'true' })"
+Write-Host "  OidcAuth__Authority=$oidcAuthority"
+Write-Host "  OidcAuth__ClientId=$oidcAppClientId"
+Write-Host "  OidcAuth__ClientSecret=$(if ($NoSecretOutput) { '<hidden>' } else { $oidcAppClientSecret })"
+Write-Host "  OidcAuth__CallbackPath=$OidcCallbackPath"
+Write-Host "  OidcAuth__SignedOutCallbackPath=$OidcSignedOutCallbackPath"
+Write-Host "  OIDC redirect URI: $oidcRedirectUri"
+Write-Host "  OIDC post-logout redirect URI: $oidcPostLogoutRedirectUri"
 $result | ConvertTo-Json -Depth 6
