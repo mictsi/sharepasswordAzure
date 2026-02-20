@@ -3,6 +3,8 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 [![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
+Latest release: `v0.1.1` (2026-02-20). See `../RELEASE_NOTES_v0.1.1.md`.
+
 Secure password sharing for external users with:
 
 - Local admin login interface

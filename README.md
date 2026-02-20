@@ -4,12 +4,15 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
+Latest release: `v0.1.1` (2026-02-20).
+
 ## Repository layout
 
 - `sharepasswordAzure/` — web application project
 - `sharepasswordAzure.Tests/` — test project
 - `.github/workflows/build.yml` — CI workflow
-- `CHANGELOG.md` — release notes
+- `CHANGELOG.md` — changelog
+- `RELEASE_NOTES_v0.1.1.md` — latest release notes
 
 ## Quick start
 
