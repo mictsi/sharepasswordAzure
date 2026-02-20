@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.4-alpha.1] - 2026-02-20
+
+### Added
+- Role-based access model with separate `Admin` and `User` roles.
+- Configurable OIDC group-to-role mapping via `OidcAuth:AdminGroups` and `OidcAuth:UserGroups`.
+
+### Changed
+- Enforced `AdminOnly` policy to require admin role membership.
+- Added `UserOrAdmin` policy for dashboard and share creation workflows.
+- Scoped non-admin dashboard listing to shares created by the signed-in user.
+- Restricted non-admin share revocation to owned shares only.
+- Limited audit log access and navigation visibility to admin role.
+- Expanded configuration templates and docs for OIDC role/group mapping settings.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.1.3] - 2026-02-20
 
 ### Security

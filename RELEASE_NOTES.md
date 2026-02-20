@@ -1,5 +1,23 @@
 # Release Notes
 
+## v0.1.4-alpha.1
+
+Alpha feature release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added role-based access controls with separate `Admin` and `User` roles.
+- Added configurable OIDC group claim mapping to roles (`AdminGroups`/`UserGroups`).
+- Restricted audit log visibility to admin role.
+- Updated dashboard behavior so users only see and revoke shares they created.
+- Updated configuration files and documentation for new OIDC role/group settings.
+
+### Notes
+
+- Release date: 2026-02-20
+- Tag: `v0.1.4-alpha.1`
+- Prerelease: `true`
+
 ## v0.1.3
 
 Security maintenance release of `sharepasswordAzure`.
