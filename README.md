@@ -26,7 +26,30 @@ For full configuration and usage instructions, see:
 - [sharepasswordAzure/README.md](sharepasswordAzure/README.md)
 - [sharepasswordAzure/CONFIGURATION.md](sharepasswordAzure/CONFIGURATION.md)
 
+## Azure provisioning script
+
+A helper script is available at `scripts/provision-azure.ps1` to create required Azure resources for this app:
+
+- Resource group
+- Storage account + audit table
+- Table Service SAS URL with permissions `rwdlacu`
+- Key Vault and SAS secret storage
+- Key Vault secret permissions for the app principal (existing principal or newly created app registration)
+
+Example:
+
+```powershell
+./scripts/provision-azure.ps1 `
+    -SubscriptionId "<subscription-id>" `
+    -ResourceGroupName "rg-sharepassword-prod" `
+    -Location "swedencentral" `
+    -NamePrefix "sharepass"
+```
+
+The script prints JSON output with created resource names and app environment variable values.
+
 ## Flowdiagram
+
 ```mermaid
 flowchart TD
     S1["1. Admin logs in"] --> S2["2. Admin creates a password share"]
