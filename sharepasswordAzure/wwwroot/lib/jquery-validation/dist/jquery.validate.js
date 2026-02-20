@@ -686,7 +686,19 @@ $.extend( $.validator, {
 		},
 
 		clean: function( selector ) {
-			return $( selector )[ 0 ];
+
+			// If a DOM element is provided, return it directly
+			if ( selector && selector.nodeType ) {
+				return selector;
+			}
+
+			// If a jQuery object is provided, return its first element
+			if ( selector && selector.jquery ) {
+				return selector[ 0 ];
+			}
+
+			// For other values (for example, selector strings), limit the search to the current form
+			return $( this.currentForm ).find( selector )[ 0 ];
 		},
 
 		errors: function() {
@@ -1082,8 +1094,22 @@ $.extend( $.validator, {
 				element = this.findByName( element.name );
 			}
 
+			var $target;
+
+			// Normalize element to a jQuery object without interpreting strings as HTML
+			if ( element && element.nodeType ) {
+				// DOM element provided
+				$target = $( element );
+			} else if ( element && element.jquery ) {
+				// jQuery object provided
+				$target = element;
+			} else {
+				// Fallback: treat as a selector within the current form
+				$target = $( this.currentForm ).find( element );
+			}
+
 			// Always apply ignore filter
-			return $( element ).not( this.settings.ignore )[ 0 ];
+			return $target.not( this.settings.ignore )[ 0 ];
 		},
 
 		checkable: function( element ) {
