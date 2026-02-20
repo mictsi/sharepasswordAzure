@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.3] - 2026-02-20
+
+### Security
+- Updated vendored `jquery.validate.js` to remediate code scanning alert #5 (`Unsafe jQuery plugin`).
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.1.2] - 2026-02-20
 
 ### Added

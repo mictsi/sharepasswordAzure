@@ -1,5 +1,19 @@
 # Release Notes
 
+## v0.1.3
+
+Security maintenance release of `sharepasswordAzure`.
+
+### Highlights
+
+- Patched vendored jQuery validation plugin to address code scanning alert #5 (`Unsafe jQuery plugin`).
+- Updated `sharepasswordAzure/wwwroot/lib/jquery-validation/dist/jquery.validate.js` with the remediation change.
+
+### Notes
+
+- Release date: 2026-02-20
+- Tag: `v0.1.3`
+
 ## v0.1.2
 
 Feature release of `sharepasswordAzure`.
