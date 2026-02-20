@@ -52,5 +52,8 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Custom entries for this project
 sharepasswordAzure/appsettings.json
 sharepasswordAzure/appsettings.Development.json
+.env
