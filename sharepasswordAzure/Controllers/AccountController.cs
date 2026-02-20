@@ -16,6 +16,7 @@ public class AccountController : Controller
     private readonly AdminAuthOptions _adminAuthOptions;
     private readonly OidcAuthOptions _oidcAuthOptions;
     private readonly IAuditLogger _auditLogger;
+    private readonly string _adminRoleName;
 
     public AccountController(
         IOptions<AdminAuthOptions> adminAuthOptions,
@@ -25,6 +26,7 @@ public class AccountController : Controller
         _adminAuthOptions = adminAuthOptions.Value;
         _oidcAuthOptions = oidcAuthOptions.Value;
         _auditLogger = auditLogger;
+        _adminRoleName = string.IsNullOrWhiteSpace(_oidcAuthOptions.AdminRoleName) ? "Admin" : _oidcAuthOptions.AdminRoleName.Trim();
     }
 
     [HttpGet]
@@ -80,7 +82,7 @@ public class AccountController : Controller
         var claims = new List<Claim>
         {
             new(ClaimTypes.Name, _adminAuthOptions.Username),
-            new(ClaimTypes.Role, "Admin")
+            new(ClaimTypes.Role, _adminRoleName)
         };
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));

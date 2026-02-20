@@ -77,6 +77,11 @@ Production hardening guide: `sharepasswordAzure/CONFIGURATION.md`
 - `OidcAuth:SignedOutCallbackPath`: post-logout callback path.
 - `OidcAuth:RequireHttpsMetadata`: should be `true` in production.
 - `OidcAuth:Scopes`: scopes requested during login.
+- `OidcAuth:GroupClaimType`: claim type used for incoming OIDC groups (default `groups`).
+- `OidcAuth:AdminRoleName`: app role name used for administrators.
+- `OidcAuth:UserRoleName`: app role name used for standard users.
+- `OidcAuth:AdminGroups`: OIDC group IDs/names that map to admin role.
+- `OidcAuth:UserGroups`: OIDC group IDs/names that map to user role.
 - `Encryption:Passphrase`: required secret used for AES encryption at rest.
 - `Share:DefaultExpiryHours`: default share expiration in hours.
 - `Share:CleanupIntervalSeconds`: frequency for expired-share cleanup service.
@@ -101,6 +106,7 @@ Local/test shortcut:
 - Keep `OidcAuth:RequireHttpsMetadata=true` in production.
 - When OIDC is enabled, users can sign in via `/account/externallogin`.
 - Local admin login remains available only from localhost.
+- Group claims are mapped to app roles using `OidcAuth:AdminGroups` and `OidcAuth:UserGroups`.
 
 ### Environment variables (Docker / Azure App Service)
 
@@ -124,12 +130,17 @@ Examples:
 - `OidcAuth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0`
 - `OidcAuth__ClientId=<client-id>`
 - `OidcAuth__ClientSecret=<client-secret>`
+- `OidcAuth__GroupClaimType=groups`
+- `OidcAuth__AdminRoleName=Admin`
+- `OidcAuth__UserRoleName=User`
 
 For array values (for example scopes), use indexed variables:
 
 - `OidcAuth__Scopes__0=openid`
 - `OidcAuth__Scopes__1=profile`
 - `OidcAuth__Scopes__2=email`
+- `OidcAuth__AdminGroups__0=<entra-group-id-for-admins>`
+- `OidcAuth__UserGroups__0=<entra-group-id-for-users>`
 
 ## Usage
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 using SharePassword.Models;
 using SharePassword.Options;
 using SharePassword.Services;
@@ -8,7 +9,7 @@ using SharePassword.ViewModels;
 
 namespace SharePassword.Controllers;
 
-[Authorize(Policy = "AdminOnly")]
+[Authorize(Policy = "UserOrAdmin")]
 public class AdminController : Controller
 {
     private readonly IShareStore _shareStore;
@@ -17,6 +18,7 @@ public class AdminController : Controller
     private readonly IAccessCodeService _accessCodeService;
     private readonly IAuditLogger _auditLogger;
     private readonly ShareOptions _shareOptions;
+    private readonly string _adminRoleName;
 
     public AdminController(
         IShareStore shareStore,
@@ -24,7 +26,8 @@ public class AdminController : Controller
         IPasswordCryptoService passwordCryptoService,
         IAccessCodeService accessCodeService,
         IAuditLogger auditLogger,
-        IOptions<ShareOptions> shareOptions)
+        IOptions<ShareOptions> shareOptions,
+        IOptions<OidcAuthOptions> oidcAuthOptions)
     {
         _shareStore = shareStore;
         _auditLogReader = auditLogReader;
@@ -32,12 +35,22 @@ public class AdminController : Controller
         _accessCodeService = accessCodeService;
         _auditLogger = auditLogger;
         _shareOptions = shareOptions.Value;
+        _adminRoleName = string.IsNullOrWhiteSpace(oidcAuthOptions.Value.AdminRoleName) ? "Admin" : oidcAuthOptions.Value.AdminRoleName.Trim();
     }
 
     [HttpGet]
     public async Task<IActionResult> Index()
     {
         var shares = await _shareStore.GetAllSharesAsync();
+
+        if (!User.IsInRole(_adminRoleName))
+        {
+            var currentUser = GetCurrentUserIdentifier();
+            shares = shares
+                .Where(x => string.Equals(x.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
         var items = shares
             .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new AdminShareListItemViewModel
@@ -72,6 +85,8 @@ public class AdminController : Controller
         var accessCode = _accessCodeService.GenerateCode();
         var token = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
         var now = DateTime.UtcNow;
+        var actorIdentifier = GetCurrentUserIdentifier();
+        var actorType = GetCurrentActorType();
 
         var share = new PasswordShare
         {
@@ -83,14 +98,14 @@ public class AdminController : Controller
             AccessToken = token,
             CreatedAtUtc = now,
             ExpiresAtUtc = now.AddHours(model.ExpiryHours),
-            CreatedBy = User.Identity?.Name ?? "admin"
+            CreatedBy = actorIdentifier
         };
 
         await _shareStore.UpsertShareAsync(share);
 
         await _auditLogger.LogAsync(
-            "admin",
-            User.Identity?.Name ?? "admin",
+            actorType,
+            actorIdentifier,
             "share.create",
             true,
             targetType: "PasswordShare",
@@ -113,24 +128,46 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Revoke(Guid id)
     {
+        var actorIdentifier = GetCurrentUserIdentifier();
+        var actorType = GetCurrentActorType();
         var share = await _shareStore.GetShareByIdAsync(id);
         if (share is null)
         {
-            await _auditLogger.LogAsync("admin", User.Identity?.Name ?? "admin", "share.revoke", false, "PasswordShare", id.ToString(), "Share not found.");
+            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "Share not found.");
             return NotFound();
+        }
+
+        if (!User.IsInRole(_adminRoleName) && !string.Equals(share.CreatedBy, actorIdentifier, StringComparison.OrdinalIgnoreCase))
+        {
+            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "User attempted to revoke share they do not own.");
+            return Forbid();
         }
 
         await _shareStore.DeleteShareAsync(id);
 
-        await _auditLogger.LogAsync("admin", User.Identity?.Name ?? "admin", "share.revoke", true, "PasswordShare", id.ToString());
+        await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", true, "PasswordShare", id.ToString());
         return RedirectToAction(nameof(Index));
     }
 
     [HttpGet]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Audit()
     {
         var logs = await _auditLogReader.GetLatestAsync(500);
 
         return View(logs);
+    }
+
+    private string GetCurrentUserIdentifier()
+    {
+        return User.FindFirstValue(ClaimTypes.NameIdentifier)
+               ?? User.FindFirstValue(ClaimTypes.Email)
+               ?? User.Identity?.Name
+               ?? "unknown";
+    }
+
+    private string GetCurrentActorType()
+    {
+        return User.IsInRole(_adminRoleName) ? "admin" : "user";
     }
 }

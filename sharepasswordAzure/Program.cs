@@ -5,6 +5,7 @@ using Azure.Data.Tables;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 using SharePassword.Options;
 using SharePassword.Services;
 
@@ -21,6 +22,8 @@ builder.Services.Configure<AzureKeyVaultOptions>(builder.Configuration.GetSectio
 builder.Services.AddControllersWithViews();
 
 var oidcOptions = builder.Configuration.GetSection(OidcAuthOptions.SectionName).Get<OidcAuthOptions>() ?? new OidcAuthOptions();
+var adminRoleName = string.IsNullOrWhiteSpace(oidcOptions.AdminRoleName) ? "Admin" : oidcOptions.AdminRoleName.Trim();
+var userRoleName = string.IsNullOrWhiteSpace(oidcOptions.UserRoleName) ? "User" : oidcOptions.UserRoleName.Trim();
 
 var authenticationBuilder = builder.Services
     .AddAuthentication(options =>
@@ -65,12 +68,49 @@ if (oidcOptions.Enabled)
         {
             options.Scope.Add(scope);
         }
+
+        options.Events.OnTokenValidated = context =>
+        {
+            if (context.Principal?.Identity is not ClaimsIdentity identity)
+            {
+                return Task.CompletedTask;
+            }
+
+            var groupClaimType = string.IsNullOrWhiteSpace(oidcOptions.GroupClaimType) ? "groups" : oidcOptions.GroupClaimType.Trim();
+            var principalGroups = context.Principal.Claims
+                .Where(claim => string.Equals(claim.Type, groupClaimType, StringComparison.OrdinalIgnoreCase))
+                .Select(claim => claim.Value)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var adminGroups = oidcOptions.AdminGroups
+                .Where(group => !string.IsNullOrWhiteSpace(group))
+                .Select(group => group.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var userGroups = oidcOptions.UserGroups
+                .Where(group => !string.IsNullOrWhiteSpace(group))
+                .Select(group => group.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (principalGroups.Overlaps(adminGroups) && !identity.HasClaim(ClaimTypes.Role, adminRoleName))
+            {
+                identity.AddClaim(new Claim(ClaimTypes.Role, adminRoleName));
+            }
+
+            if (principalGroups.Overlaps(userGroups) && !identity.HasClaim(ClaimTypes.Role, userRoleName))
+            {
+                identity.AddClaim(new Claim(ClaimTypes.Role, userRoleName));
+            }
+
+            return Task.CompletedTask;
+        };
     });
 }
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy => policy.RequireAuthenticatedUser());
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole(adminRoleName));
+    options.AddPolicy("UserOrAdmin", policy => policy.RequireRole(adminRoleName, userRoleName));
 });
 
 builder.Services.AddHttpContextAccessor();

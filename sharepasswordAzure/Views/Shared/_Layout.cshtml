@@ -1,4 +1,11 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.Extensions.Options
+@using SharePassword.Options
+@inject IOptions<OidcAuthOptions> OidcAuthOptions
+@{
+    var adminRoleName = string.IsNullOrWhiteSpace(OidcAuthOptions.Value.AdminRoleName) ? "Admin" : OidcAuthOptions.Value.AdminRoleName.Trim();
+}
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -27,9 +34,12 @@
                             <li class="nav-item">
                                 <a class="nav-link text-dark" asp-controller="Admin" asp-action="Create">New Share</a>
                             </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Audit">Audit Logs</a>
-                            </li>
+                            @if (User.IsInRole(adminRoleName))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-controller="Admin" asp-action="Audit">Audit Logs</a>
+                                </li>
+                            }
                         </ul>
                         <form asp-controller="Account" asp-action="Logout" method="post" class="d-flex">
                             <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>

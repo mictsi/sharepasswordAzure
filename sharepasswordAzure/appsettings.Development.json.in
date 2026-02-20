@@ -34,7 +34,12 @@
     "CallbackPath": "/signin-oidc",
     "SignedOutCallbackPath": "/signout-callback-oidc",
     "RequireHttpsMetadata": true,
-    "Scopes": [ "openid", "profile", "email" ]
+    "Scopes": [ "openid", "profile", "email" ],
+    "GroupClaimType": "groups",
+    "AdminRoleName": "Admin",
+    "UserRoleName": "User",
+    "AdminGroups": [ "<entra-group-id-for-admins>" ],
+    "UserGroups": [ "<entra-group-id-for-users>" ]
   },
   "Encryption": {
     "Passphrase": "dev-only-passphrase-change-before-production"
