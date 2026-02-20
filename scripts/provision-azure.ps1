@@ -28,6 +28,9 @@ param(
 
     [string]$OidcCallbackPath = "/signin-oidc",
     [string]$OidcSignedOutCallbackPath = "/signout-callback-oidc",
+    # Entra app manifest groupMembershipClaims value for OIDC token group claims.
+    # Common values: SecurityGroup, All, DirectoryRole, ApplicationGroup, None.
+    [string]$OidcGroupMembershipClaims = "SecurityGroup",
 
     # If set, do not include secrets (clientSecret / SAS URL) in console output JSON.
     [switch]$NoSecretOutput
@@ -351,6 +354,16 @@ if (-not $SkipOidcAppRegistration) {
     )).Trim()
 
     if ([string]::IsNullOrWhiteSpace($oidcAppClientSecret)) { throw "Failed to create client secret for OIDC app registration." }
+
+    if (-not [string]::IsNullOrWhiteSpace($OidcGroupMembershipClaims) -and -not ($OidcGroupMembershipClaims -ieq "None")) {
+        Write-Host "Configuring OIDC app group claims: groupMembershipClaims='$OidcGroupMembershipClaims'..." -ForegroundColor Cyan
+        Invoke-Az -Args @(
+            "ad","app","update",
+            "--id",$oidcAppClientId,
+            "--set","groupMembershipClaims=$OidcGroupMembershipClaims",
+            "--output","none"
+        ) | Out-Null
+    }
 }
 
 # RBAC: grant the app/principal read access to secrets (least privilege)
@@ -384,6 +397,7 @@ $result = [PSCustomObject]@{
     oidcAuthority     = $oidcAuthority
     oidcClientId      = $oidcAppClientId
     oidcClientSecret  = $(if ($NoSecretOutput) { "" } else { $oidcAppClientSecret })
+    oidcGroupMembershipClaims = $(if ([string]::IsNullOrWhiteSpace($oidcAppClientId)) { "" } else { $OidcGroupMembershipClaims })
     oidcRedirectUri   = $oidcRedirectUri
     oidcPostLogoutRedirectUri = $oidcPostLogoutRedirectUri
     appEnvironmentVariables = [PSCustomObject]@{
@@ -419,6 +433,7 @@ Write-Host "  OidcAuth__ClientId=$oidcAppClientId"
 Write-Host "  OidcAuth__ClientSecret=$(if ($NoSecretOutput) { '<hidden>' } else { $oidcAppClientSecret })"
 Write-Host "  OidcAuth__CallbackPath=$OidcCallbackPath"
 Write-Host "  OidcAuth__SignedOutCallbackPath=$OidcSignedOutCallbackPath"
+Write-Host "  OIDC app groupMembershipClaims=$(if ([string]::IsNullOrWhiteSpace($oidcAppClientId)) { '<not-configured>' } else { $OidcGroupMembershipClaims })"
 Write-Host "  OIDC redirect URI: $oidcRedirectUri"
 Write-Host "  OIDC post-logout redirect URI: $oidcPostLogoutRedirectUri"
 $result | ConvertTo-Json -Depth 6

@@ -107,6 +107,7 @@ Local/test shortcut:
 - When OIDC is enabled, users can sign in via `/account/externallogin`.
 - Local admin login remains available only from localhost.
 - Group claims are mapped to app roles using `OidcAuth:AdminGroups` and `OidcAuth:UserGroups`.
+- If you use `scripts/provision-azure.ps1`, the created OIDC app is configured with `groupMembershipClaims=SecurityGroup` by default so `groups` claims are emitted in tokens.
 
 ### Environment variables (Docker / Azure App Service)
 
