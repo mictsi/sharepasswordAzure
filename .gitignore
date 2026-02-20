@@ -52,3 +52,5 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+sharepasswordAzure/appsettings.json
+sharepasswordAzure/appsettings.Development.json
