@@ -1,5 +1,22 @@
 # Release Notes
 
+## v0.1.2
+
+Feature release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added end-user "delete after retrieve" flow for shared passwords.
+- Added explicit confirmation prompt before password deletion.
+- Added deleted-state confirmation page after successful removal.
+- Added integration test for end-user deletion flow.
+- Consolidated and aligned release documentation and flow diagrams.
+
+### Notes
+
+- Release date: 2026-02-20
+- Tag: `v0.1.2`
+
 ## v0.1.1
 
 Maintenance release of `sharepasswordAzure`.

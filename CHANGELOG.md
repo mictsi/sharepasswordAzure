@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2] - 2026-02-20
+
+### Added
+- End-user explicit delete flow after password retrieval with a dedicated action button.
+- Second-step confirmation dialog before deleting a retrieved password.
+- Post-delete confirmation page for end users.
+- Integration test coverage for delete-after-retrieve behavior.
+
+### Changed
+- Consolidated release notes into a single `RELEASE_NOTES.md` file.
+- Updated flow diagrams in top-level documentation to include the manual delete flow.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.1.1] - 2026-02-20
 
 ### Changed

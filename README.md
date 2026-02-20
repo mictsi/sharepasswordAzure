@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `v0.1.1` (2026-02-20).
+Latest release: `v0.1.2` (2026-02-20).
 
 ## Repository layout
 
