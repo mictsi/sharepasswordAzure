@@ -10,6 +10,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       AzureTableAudit__ServiceSasUrl: ${{ secrets.AZURE_TABLE_AUDIT_SAS_URL }}
 
