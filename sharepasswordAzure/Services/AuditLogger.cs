@@ -23,11 +23,11 @@ public class AuditLogger : IAuditLogger
         _consoleAuditLoggingOptions = consoleAuditLoggingOptions.Value;
     }
 
-    private static string SanitizeForLogging(string? value)
+    private static string? SanitizeForLogging(string? value)
     {
         if (string.IsNullOrEmpty(value))
         {
-            return string.Empty;
+            return value;
         }
 
         // Remove line breaks to mitigate log forging in plain-text logs
@@ -47,20 +47,29 @@ public class AuditLogger : IAuditLogger
         CancellationToken cancellationToken = default)
     {
         var context = _httpContextAccessor.HttpContext;
+        var sanitizedActorType = SanitizeForLogging(actorType) ?? string.Empty;
+        var sanitizedActorIdentifier = SanitizeForLogging(actorIdentifier) ?? string.Empty;
+        var sanitizedOperation = SanitizeForLogging(operation) ?? string.Empty;
+        var sanitizedTargetType = SanitizeForLogging(targetType);
+        var sanitizedTargetId = SanitizeForLogging(targetId);
+        var sanitizedDetails = SanitizeForLogging(details);
+        var sanitizedIpAddress = SanitizeForLogging(context?.Connection.RemoteIpAddress?.ToString());
+        var sanitizedUserAgent = SanitizeForLogging(context?.Request.Headers.UserAgent.ToString());
+        var sanitizedCorrelationId = SanitizeForLogging(context?.TraceIdentifier);
 
         var audit = new AuditLog
         {
             TimestampUtc = DateTime.UtcNow,
-            ActorType = actorType,
-            ActorIdentifier = actorIdentifier,
-            Operation = operation,
+            ActorType = sanitizedActorType,
+            ActorIdentifier = sanitizedActorIdentifier,
+            Operation = sanitizedOperation,
             Success = success,
-            TargetType = targetType,
-            TargetId = targetId,
-            Details = details,
-            IpAddress = context?.Connection.RemoteIpAddress?.ToString(),
-            UserAgent = context?.Request.Headers.UserAgent.ToString(),
-            CorrelationId = context?.TraceIdentifier
+            TargetType = sanitizedTargetType,
+            TargetId = sanitizedTargetId,
+            Details = sanitizedDetails,
+            IpAddress = sanitizedIpAddress,
+            UserAgent = sanitizedUserAgent,
+            CorrelationId = sanitizedCorrelationId
         };
 
         await _auditLogSink.AddAuditAsync(audit, cancellationToken);
@@ -73,19 +82,13 @@ public class AuditLogger : IAuditLogger
         var configuredLevel = (_consoleAuditLoggingOptions.Level ?? "INFO").Trim().ToUpperInvariant();
         var message = "Audit event: Operation={Operation}, Success={Success}, ActorType={ActorType}, Actor={Actor}, TargetType={TargetType}, TargetId={TargetId}, CorrelationId={CorrelationId}, Details={Details}";
 
-        var sanitizedActorIdentifier = SanitizeForLogging(actorIdentifier);
-        var sanitizedTargetType = SanitizeForLogging(targetType);
-        var sanitizedTargetId = SanitizeForLogging(targetId);
-        var sanitizedDetails = SanitizeForLogging(details);
-        var sanitizedCorrelationId = SanitizeForLogging(audit.CorrelationId);
-
         if (!success)
         {
             _logger.LogError(
                 message,
-                operation,
+                sanitizedOperation,
                 success,
-                actorType,
+                sanitizedActorType,
                 sanitizedActorIdentifier,
                 sanitizedTargetType,
                 sanitizedTargetId,
@@ -104,9 +107,9 @@ public class AuditLogger : IAuditLogger
         {
             _logger.LogDebug(
                 message,
-                operation,
+                sanitizedOperation,
                 success,
-                actorType,
+                sanitizedActorType,
                 sanitizedActorIdentifier,
                 sanitizedTargetType,
                 sanitizedTargetId,
@@ -117,9 +120,9 @@ public class AuditLogger : IAuditLogger
 
         _logger.LogInformation(
             message,
-            operation,
+            sanitizedOperation,
             success,
-            actorType,
+            sanitizedActorType,
             sanitizedActorIdentifier,
             sanitizedTargetType,
             sanitizedTargetId,

@@ -1,5 +1,20 @@
 # Release Notes
 
+## v0.2.1
+
+Security maintenance release of `sharepasswordAzure`.
+
+### Highlights
+
+- Hardened audit logging against log forging by sanitizing user-derived values before logging.
+- Applied centralized newline sanitization for audit actor, target, correlation, and details fields.
+- Preserved audit functionality and log levels while improving safety of console output.
+
+### Notes
+
+- Release date: 2026-02-23
+- Tag: `0.2.1`
+
 ## v0.2.0
 
 Feature and security release of `sharepasswordAzure`.

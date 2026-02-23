@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.1] - 2026-02-23
+
+### Security
+- Sanitized user-influenced audit log fields to mitigate log forging (`CR`/`LF` injection) in console logs.
+
+### Changed
+- Centralized sanitization in `AuditLogger` and applied it to persisted audit strings and console output fields.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.2.0] - 2026-02-23
 
 ### Added

@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.0` (2026-02-23).
+Latest release: `0.2.1` (2026-02-23).
 
 ## Repository layout
 
@@ -49,8 +49,9 @@ Example:
 
 The script prints JSON output with created resource names and app environment variable values.
 
-## 0.2.0 highlights
+## 0.2.1 highlights
 
+- Audit logging hardening for user-input sanitization.
 - Optional per-share Entra ID-only access mode.
 - Recipient enforcement for OIDC-protected links.
 - Audit logs UI with paging/search (default 100 rows).
