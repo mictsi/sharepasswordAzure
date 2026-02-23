@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-02-23
+
+### Added
+- Per-share `Require Entra ID login to access` option in share creation flow.
+- OIDC-protected share access mode with enforced recipient identity validation.
+- Configurable console audit logging (`ConsoleAuditLogging:Enabled` and `ConsoleAuditLogging:Level`).
+- Audit logs paging and search in admin UI with default page size `100`.
+- Share list access-mode indicator badge (`Entra ID Required` vs `Email + Code`).
+
+### Changed
+- OIDC claim mapping and actor identification for clearer audit usernames.
+- Dashboard access scoping for non-admin users based on ownership identity.
+- Session cookie timeout configured to 60 minutes.
+- Provisioning script now grants `Key Vault Secrets Officer` to the app principal.
+
+### Fixed
+- Graceful handling for Key Vault RBAC `403` during share creation.
+- Recipient mismatch enforcement for OIDC-required share links on both GET and POST access paths.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.1.4-alpha.1] - 2026-02-20
 
 ### Added

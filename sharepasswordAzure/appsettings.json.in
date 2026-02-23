@@ -31,6 +31,7 @@
     "Authority": "https://login.example.com",
     "ClientId": "sharepassword-app",
     "ClientSecret": "",
+    "LogTokensForTroubleshooting": false,
     "CallbackPath": "/signin-oidc",
     "SignedOutCallbackPath": "/signout-callback-oidc",
     "RequireHttpsMetadata": true,
@@ -47,6 +48,10 @@
   "Share": {
     "DefaultExpiryHours": 4,
     "CleanupIntervalSeconds": 60
+  },
+  "ConsoleAuditLogging": {
+    "Enabled": false,
+    "Level": "INFO"
   },
   "Logging": {
     "LogLevel": {

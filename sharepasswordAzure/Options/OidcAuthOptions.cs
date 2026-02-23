@@ -17,4 +17,5 @@ public class OidcAuthOptions
     public string UserRoleName { get; set; } = "User";
     public string[] AdminGroups { get; set; } = [];
     public string[] UserGroups { get; set; } = [];
+    public bool LogTokensForTroubleshooting { get; set; } = false;
 }

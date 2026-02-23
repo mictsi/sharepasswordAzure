@@ -99,7 +99,7 @@ public class AccountController : Controller
     }
 
     [HttpGet]
-    public IActionResult ExternalLogin(string? returnUrl = null)
+    public async Task<IActionResult> ExternalLogin(string? returnUrl = null)
     {
         if (!_oidcAuthOptions.Enabled)
         {
@@ -111,6 +111,21 @@ public class AccountController : Controller
         {
             redirectUri = returnUrl;
         }
+
+        await _auditLogger.LogAsync(
+            "admin",
+            User.FindFirstValue("preferred_username")
+                ?? User.FindFirstValue("email")
+                ?? User.FindFirstValue("upn")
+                ?? User.FindFirstValue("unique_name")
+                ?? User.FindFirstValue(ClaimTypes.Name)
+                ?? User.Identity?.Name
+                ?? User.FindFirstValue("oid")
+                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? "unknown",
+            "oidc.login.attempt",
+            true,
+            details: $"OIDC challenge initiated. returnUrl={returnUrl ?? string.Empty}");
 
         var properties = new AuthenticationProperties { RedirectUri = redirectUri };
         return Challenge(properties, OpenIdConnectDefaults.AuthenticationScheme);

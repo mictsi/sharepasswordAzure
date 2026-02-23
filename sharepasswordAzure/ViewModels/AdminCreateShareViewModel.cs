@@ -21,4 +21,7 @@ public class AdminCreateShareViewModel
     [Range(1, 168)]
     [Display(Name = "Expires in (hours)")]
     public int ExpiryHours { get; set; } = 4;
+
+    [Display(Name = "Require Entra ID login to access")]
+    public bool RequireOidcLogin { get; set; }
 }

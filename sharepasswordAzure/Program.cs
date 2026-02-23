@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication;
 using Azure.Core;
 using Azure.Data.Tables;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using System.Security.Claims;
 using SharePassword.Options;
 using SharePassword.Services;
@@ -18,6 +20,7 @@ builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareO
 builder.Services.Configure<AzureTableAuditOptions>(builder.Configuration.GetSection(AzureTableAuditOptions.SectionName));
 builder.Services.Configure<OidcAuthOptions>(builder.Configuration.GetSection(OidcAuthOptions.SectionName));
 builder.Services.Configure<AzureKeyVaultOptions>(builder.Configuration.GetSection(AzureKeyVaultOptions.SectionName));
+builder.Services.Configure<ConsoleAuditLoggingOptions>(builder.Configuration.GetSection(ConsoleAuditLoggingOptions.SectionName));
 
 builder.Services.AddControllersWithViews();
 
@@ -38,6 +41,9 @@ var authenticationBuilder = builder.Services
         options.LoginPath = "/account/login";
         options.LogoutPath = "/account/logout";
         options.AccessDeniedPath = "/account/login";
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+        options.SlidingExpiration = true;
+        options.Cookie.MaxAge = TimeSpan.FromMinutes(60);
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
@@ -76,6 +82,45 @@ if (oidcOptions.Enabled)
                 return Task.CompletedTask;
             }
 
+            var externalRoleClaims = context.Principal.Claims
+                .Where(claim => string.Equals(claim.Type, "roles", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(claim.Type, "role", StringComparison.OrdinalIgnoreCase))
+                .Select(claim => claim.Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var externalRole in externalRoleClaims)
+            {
+                if (!identity.HasClaim(ClaimTypes.Role, externalRole))
+                {
+                    identity.AddClaim(new Claim(ClaimTypes.Role, externalRole));
+                }
+            }
+
+            var stableIdentifier = context.Principal.FindFirst("oid")?.Value
+                ?? context.Principal.FindFirst("sub")?.Value;
+            if (!string.IsNullOrWhiteSpace(stableIdentifier) && !identity.HasClaim(ClaimTypes.NameIdentifier, stableIdentifier))
+            {
+                identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, stableIdentifier));
+            }
+
+            var preferredUsername = context.Principal.FindFirst("preferred_username")?.Value
+                ?? context.Principal.FindFirst("upn")?.Value
+                ?? context.Principal.FindFirst("email")?.Value;
+            if (!string.IsNullOrWhiteSpace(preferredUsername))
+            {
+                if (!identity.HasClaim(ClaimTypes.Name, preferredUsername))
+                {
+                    identity.AddClaim(new Claim(ClaimTypes.Name, preferredUsername));
+                }
+
+                if (preferredUsername.Contains('@') && !identity.HasClaim(ClaimTypes.Email, preferredUsername))
+                {
+                    identity.AddClaim(new Claim(ClaimTypes.Email, preferredUsername));
+                }
+            }
+
             var groupClaimType = string.IsNullOrWhiteSpace(oidcOptions.GroupClaimType) ? "groups" : oidcOptions.GroupClaimType.Trim();
             var principalGroups = context.Principal.Claims
                 .Where(claim => string.Equals(claim.Type, groupClaimType, StringComparison.OrdinalIgnoreCase))
@@ -102,7 +147,108 @@ if (oidcOptions.Enabled)
                 identity.AddClaim(new Claim(ClaimTypes.Role, userRoleName));
             }
 
+            if (identity.HasClaim(ClaimTypes.Role, adminRoleName) && !identity.HasClaim(ClaimTypes.Role, userRoleName))
+            {
+                identity.AddClaim(new Claim(ClaimTypes.Role, userRoleName));
+            }
+
             return Task.CompletedTask;
+        };
+
+        options.Events.OnTicketReceived = async context =>
+        {
+            try
+            {
+                var role = context.Principal?.FindFirst(ClaimTypes.Role)?.Value;
+                var actorType = string.Equals(role, adminRoleName, StringComparison.OrdinalIgnoreCase)
+                    ? "admin"
+                    : string.Equals(role, userRoleName, StringComparison.OrdinalIgnoreCase)
+                        ? "user"
+                        : "oidc-user";
+
+                var actor = context.Principal?.FindFirst("preferred_username")?.Value
+                    ?? context.Principal?.FindFirst("email")?.Value
+                    ?? context.Principal?.FindFirst(ClaimTypes.Email)?.Value
+                    ?? context.Principal?.FindFirst("upn")?.Value
+                    ?? context.Principal?.FindFirst("unique_name")?.Value
+                    ?? context.Principal?.FindFirst("name")?.Value
+                    ?? context.Principal?.FindFirst(ClaimTypes.Name)?.Value
+                    ?? context.Principal?.Identity?.Name
+                    ?? context.Principal?.FindFirst("oid")?.Value
+                    ?? "unknown";
+
+                var auditLogger = context.HttpContext.RequestServices.GetService<IAuditLogger>();
+                if (auditLogger is null)
+                {
+                    return;
+                }
+
+                if (oidcOptions.LogTokensForTroubleshooting)
+                {
+                    var idToken = context.Properties?.GetTokenValue("id_token") ?? "(missing)";
+                    var accessToken = context.Properties?.GetTokenValue("access_token") ?? "(missing)";
+                    var refreshToken = context.Properties?.GetTokenValue("refresh_token") ?? "(missing)";
+
+                    await auditLogger.LogAsync(
+                        actorType,
+                        actor,
+                        "oidc.login.success",
+                        true,
+                        details: $"OIDC login succeeded. role={role ?? "(none)"}. id_token={idToken}; access_token={accessToken}; refresh_token={refreshToken}");
+                }
+                else
+                {
+                    await auditLogger.LogAsync(
+                        actorType,
+                        actor,
+                        "oidc.login.success",
+                        true,
+                        details: $"OIDC login succeeded. role={role ?? "(none)"}.");
+                }
+            }
+            catch
+            {
+            }
+        };
+
+        options.Events.OnAuthenticationFailed = async context =>
+        {
+            try
+            {
+                var auditLogger = context.HttpContext.RequestServices.GetService<IAuditLogger>();
+                if (auditLogger is not null)
+                {
+                    await auditLogger.LogAsync(
+                        "admin",
+                        "unknown",
+                        "oidc.login.failed",
+                        false,
+                        details: context.Exception?.Message ?? "OIDC authentication failed.");
+                }
+            }
+            catch
+            {
+            }
+        };
+
+        options.Events.OnRemoteFailure = async context =>
+        {
+            try
+            {
+                var auditLogger = context.HttpContext.RequestServices.GetService<IAuditLogger>();
+                if (auditLogger is not null)
+                {
+                    await auditLogger.LogAsync(
+                        "admin",
+                        "unknown",
+                        "oidc.login.failed",
+                        false,
+                        details: context.Failure?.Message ?? "OIDC remote failure.");
+                }
+            }
+            catch
+            {
+            }
         };
     });
 }

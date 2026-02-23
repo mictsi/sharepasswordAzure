@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.2.0
+
+Feature and security release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added per-share option to require Entra ID (OIDC) login before access.
+- Enforced recipient-only access for OIDC-protected share links.
+- Added role-aware audit improvements for OIDC login attempt/success/failure flows.
+- Added audit logs dashboard improvements with default 100 rows, paging, and search.
+- Added config-driven console audit logging with levels `DEBUG`, `INFO`, and `ERROR`.
+- Improved user ownership scoping so non-admin users only see/revoke shares they created, while admins see all shares.
+- Added robust Azure Key Vault permission error handling for share creation.
+- Updated Azure provisioning script to assign `Key Vault Secrets Officer` role to app principal.
+
+### Notes
+
+- Release date: 2026-02-23
+- Tag: `0.2.0`
+
 ## v0.1.4-alpha.1
 
 Alpha feature release of `sharepasswordAzure`.

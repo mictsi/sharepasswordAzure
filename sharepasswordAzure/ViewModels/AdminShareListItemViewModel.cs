@@ -8,4 +8,5 @@ public class AdminShareListItemViewModel
     public DateTime CreatedAtUtc { get; set; }
     public DateTime ExpiresAtUtc { get; set; }
     public bool IsExpired { get; set; }
+    public bool RequireOidcLogin { get; set; }
 }

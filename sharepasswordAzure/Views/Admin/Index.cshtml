@@ -13,6 +13,7 @@
         <tr>
             <th>Recipient</th>
             <th>Username</th>
+            <th>Access Mode</th>
             <th>Created (UTC)</th>
             <th>Expires (UTC)</th>
             <th>Status</th>
@@ -25,6 +26,16 @@
             <tr>
                 <td>@item.RecipientEmail</td>
                 <td>@item.SharedUsername</td>
+                <td>
+                    @if (item.RequireOidcLogin)
+                    {
+                        <span class="badge bg-info text-dark">Entra ID Required</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-light text-dark border">Email + Code</span>
+                    }
+                </td>
                 <td>@item.CreatedAtUtc.ToString("u")</td>
                 <td>@item.ExpiresAtUtc.ToString("u")</td>
                 <td>

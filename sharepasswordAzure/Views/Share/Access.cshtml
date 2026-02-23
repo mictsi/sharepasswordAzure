@@ -6,15 +6,23 @@
 <div class="row justify-content-center">
     <div class="col-md-6">
         <h2>Access Shared Credentials</h2>
-        <p>Enter your email address and access code to view the shared password.</p>
+        @if (Model.RequireOidcLogin)
+        {
+            <p>This share requires Entra ID sign-in. Your signed-in account must match the recipient email, then enter the access code.</p>
+        }
+        else
+        {
+            <p>Enter your email address and access code to view the shared password.</p>
+        }
 
         <form asp-action="Access" method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <input asp-for="Token" type="hidden" />
+            <input asp-for="RequireOidcLogin" type="hidden" />
 
             <div class="mb-3">
                 <label asp-for="Email" class="form-label"></label>
-                <input asp-for="Email" class="form-control" />
+                <input asp-for="Email" class="form-control" readonly="@(Model.RequireOidcLogin ? "readonly" : null)" />
                 <span asp-validation-for="Email" class="text-danger"></span>
             </div>
 

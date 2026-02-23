@@ -366,14 +366,14 @@ if (-not $SkipOidcAppRegistration) {
     }
 }
 
-# RBAC: grant the app/principal read access to secrets (least privilege)
+# RBAC: grant the app/principal secret read/write access required by the app
 if (-not [string]::IsNullOrWhiteSpace($principalObjectId)) {
-    Write-Host "Assigning 'Key Vault Secrets User' on vault to principal '$principalObjectId'..." -ForegroundColor Cyan
+    Write-Host "Assigning 'Key Vault Secrets Officer' on vault to principal '$principalObjectId'..." -ForegroundColor Cyan
     Invoke-Az -Args @(
         "role","assignment","create",
         "--assignee-object-id",$principalObjectId,
         "--assignee-principal-type","ServicePrincipal",
-        "--role","Key Vault Secrets User",
+        "--role","Key Vault Secrets Officer",
         "--scope",$kvId,
         "--output","none"
     ) | Out-Null

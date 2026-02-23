@@ -3,7 +3,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 [![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
-Latest release: `v0.1.1` (2026-02-20). See `../RELEASE_NOTES_v0.1.1.md`.
+Latest release: `0.2.0` (2026-02-23). See `../RELEASE_NOTES.md`.
 
 Secure password sharing for external users with:
 
@@ -73,6 +73,7 @@ Production hardening guide: `sharepasswordAzure/CONFIGURATION.md`
 - `OidcAuth:Authority`: OIDC authority/issuer URL.
 - `OidcAuth:ClientId`: OIDC client ID.
 - `OidcAuth:ClientSecret`: OIDC client secret.
+- `OidcAuth:LogTokensForTroubleshooting`: when `true`, writes OIDC tokens to audit logs for troubleshooting.
 - `OidcAuth:CallbackPath`: OIDC callback path (default `/signin-oidc`).
 - `OidcAuth:SignedOutCallbackPath`: post-logout callback path.
 - `OidcAuth:RequireHttpsMetadata`: should be `true` in production.
@@ -85,6 +86,8 @@ Production hardening guide: `sharepasswordAzure/CONFIGURATION.md`
 - `Encryption:Passphrase`: required secret used for AES encryption at rest.
 - `Share:DefaultExpiryHours`: default share expiration in hours.
 - `Share:CleanupIntervalSeconds`: frequency for expired-share cleanup service.
+- `ConsoleAuditLogging:Enabled`: enable/disable writing audit events to console logs.
+- `ConsoleAuditLogging:Level`: console audit level (`DEBUG`, `INFO`, `ERROR`).
 - `Logging:LogLevel:*`: standard ASP.NET logging levels.
 - `AllowedHosts`: allowed hostnames.
 
@@ -108,6 +111,7 @@ Local/test shortcut:
 - Local admin login remains available only from localhost.
 - Group claims are mapped to app roles using `OidcAuth:AdminGroups` and `OidcAuth:UserGroups`.
 - If you use `scripts/provision-azure.ps1`, the created OIDC app is configured with `groupMembershipClaims=SecurityGroup` by default so `groups` claims are emitted in tokens.
+- Shares can optionally require OIDC login (`Require Entra ID login to access`), in which case only the configured recipient email can access the secret.
 
 ### Environment variables (Docker / Azure App Service)
 
@@ -131,9 +135,12 @@ Examples:
 - `OidcAuth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0`
 - `OidcAuth__ClientId=<client-id>`
 - `OidcAuth__ClientSecret=<client-secret>`
+- `OidcAuth__LogTokensForTroubleshooting=false`
 - `OidcAuth__GroupClaimType=groups`
 - `OidcAuth__AdminRoleName=Admin`
 - `OidcAuth__UserRoleName=User`
+- `ConsoleAuditLogging__Enabled=false`
+- `ConsoleAuditLogging__Level=INFO`
 
 For array values (for example scopes), use indexed variables:
 

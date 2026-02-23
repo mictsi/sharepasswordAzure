@@ -1,4 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using SharePassword.Options;
 using SharePassword.Services;
 using SharePassword.ViewModels;
 
@@ -10,36 +15,113 @@ public class ShareController : Controller
     private readonly IAccessCodeService _accessCodeService;
     private readonly IPasswordCryptoService _passwordCryptoService;
     private readonly IAuditLogger _auditLogger;
+    private readonly OidcAuthOptions _oidcAuthOptions;
 
     public ShareController(
         IShareStore shareStore,
         IAccessCodeService accessCodeService,
         IPasswordCryptoService passwordCryptoService,
-        IAuditLogger auditLogger)
+        IAuditLogger auditLogger,
+        IOptions<OidcAuthOptions> oidcAuthOptions)
     {
         _shareStore = shareStore;
         _accessCodeService = accessCodeService;
         _passwordCryptoService = passwordCryptoService;
         _auditLogger = auditLogger;
+        _oidcAuthOptions = oidcAuthOptions.Value;
     }
 
     [HttpGet]
-    public IActionResult Access(string token)
+    public async Task<IActionResult> Access(string token)
     {
-        return View(new ShareAccessViewModel { Token = token });
+        var share = await _shareStore.GetShareByTokenAsync(token);
+        var model = new ShareAccessViewModel { Token = token, RequireOidcLogin = share?.RequireOidcLogin ?? false };
+
+        if (share?.RequireOidcLogin == true)
+        {
+            if (!_oidcAuthOptions.Enabled)
+            {
+                return Forbid();
+            }
+
+            if (User.Identity?.IsAuthenticated != true)
+            {
+                return Challenge(new AuthenticationProperties
+                {
+                    RedirectUri = Url.Action(nameof(Access), new { token })
+                }, OpenIdConnectDefaults.AuthenticationScheme);
+            }
+
+            var oidcEmail = GetAuthenticatedEmail();
+            if (string.IsNullOrWhiteSpace(oidcEmail))
+            {
+                await _auditLogger.LogAsync("oidc-user", "unknown", "share.access", false, details: "OIDC-authenticated user has no usable email claim.");
+                return Forbid();
+            }
+
+            if (share is not null && !string.Equals(share.RecipientEmail, oidcEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                await _auditLogger.LogAsync("oidc-user", oidcEmail, "share.access", false, "PasswordShare", share.Id.ToString(), "OIDC recipient mismatch.");
+                return Forbid();
+            }
+
+            model.Email = oidcEmail;
+        }
+
+        return View(model);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Access(ShareAccessViewModel model)
     {
+        var share = await _shareStore.GetShareByTokenAsync(model.Token);
+        model.RequireOidcLogin = share?.RequireOidcLogin ?? false;
+
+        var email = (model.Email ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (share?.RequireOidcLogin == true)
+        {
+            if (!_oidcAuthOptions.Enabled)
+            {
+                return Forbid();
+            }
+
+            if (User.Identity?.IsAuthenticated != true)
+            {
+                return Challenge(new AuthenticationProperties
+                {
+                    RedirectUri = Url.Action(nameof(Access), new { token = model.Token })
+                }, OpenIdConnectDefaults.AuthenticationScheme);
+            }
+
+            var oidcEmail = GetAuthenticatedEmail();
+            if (string.IsNullOrWhiteSpace(oidcEmail))
+            {
+                await _auditLogger.LogAsync("oidc-user", "unknown", "share.access", false, details: "OIDC-authenticated user has no usable email claim.");
+                ModelState.AddModelError(string.Empty, "Unable to resolve your Entra ID email from token claims.");
+                return View(model);
+            }
+
+            model.Email = oidcEmail;
+            email = oidcEmail;
+
+            if (share is not null && !string.Equals(share.RecipientEmail, email, StringComparison.OrdinalIgnoreCase))
+            {
+                await _auditLogger.LogAsync("oidc-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), "OIDC recipient mismatch.");
+                return Forbid();
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(email))
+        {
+            ModelState.AddModelError(nameof(model.Email), "Email address is required.");
+            return View(model);
+        }
+
         if (!ModelState.IsValid)
         {
             return View(model);
         }
-
-        var email = model.Email.Trim().ToLowerInvariant();
-        var share = await _shareStore.GetShareByTokenAsync(model.Token);
 
         if (share is null)
         {
@@ -109,5 +191,15 @@ public class ShareController : Controller
         await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", true, "PasswordShare", shareId.ToString());
 
         return View("Deleted");
+    }
+
+    private string GetAuthenticatedEmail()
+    {
+        return User.FindFirstValue("preferred_username")?.Trim().ToLowerInvariant()
+               ?? User.FindFirstValue("email")?.Trim().ToLowerInvariant()
+               ?? User.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant()
+               ?? User.FindFirstValue("upn")?.Trim().ToLowerInvariant()
+               ?? User.FindFirstValue("unique_name")?.Trim().ToLowerInvariant()
+               ?? string.Empty;
     }
 }

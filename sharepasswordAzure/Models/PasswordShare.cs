@@ -12,4 +12,5 @@ public class PasswordShare
     public DateTime ExpiresAtUtc { get; set; }
     public DateTime? LastAccessedAtUtc { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
+    public bool RequireOidcLogin { get; set; }
 }

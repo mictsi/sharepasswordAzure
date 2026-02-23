@@ -57,3 +57,4 @@ nunit-*.xml
 sharepasswordAzure/appsettings.json
 sharepasswordAzure/appsettings.Development.json
 .env
+sharepasswordAzure/appsettings.Development copy.json

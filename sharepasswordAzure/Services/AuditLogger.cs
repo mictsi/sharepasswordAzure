@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using SharePassword.Options;
 using SharePassword.Models;
 
 namespace SharePassword.Services;
@@ -6,13 +8,19 @@ public class AuditLogger : IAuditLogger
 {
     private readonly IAuditLogSink _auditLogSink;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<AuditLogger> _logger;
+    private readonly ConsoleAuditLoggingOptions _consoleAuditLoggingOptions;
 
     public AuditLogger(
         IAuditLogSink auditLogSink,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        ILogger<AuditLogger> logger,
+        IOptions<ConsoleAuditLoggingOptions> consoleAuditLoggingOptions)
     {
         _auditLogSink = auditLogSink;
         _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
+        _consoleAuditLoggingOptions = consoleAuditLoggingOptions.Value;
     }
 
     public async Task LogAsync(
@@ -43,5 +51,60 @@ public class AuditLogger : IAuditLogger
         };
 
         await _auditLogSink.AddAuditAsync(audit, cancellationToken);
+
+        if (!_consoleAuditLoggingOptions.Enabled)
+        {
+            return;
+        }
+
+        var configuredLevel = (_consoleAuditLoggingOptions.Level ?? "INFO").Trim().ToUpperInvariant();
+        var message = "Audit event: Operation={Operation}, Success={Success}, ActorType={ActorType}, Actor={Actor}, TargetType={TargetType}, TargetId={TargetId}, CorrelationId={CorrelationId}, Details={Details}";
+
+        if (!success)
+        {
+            _logger.LogError(
+                message,
+                operation,
+                success,
+                actorType,
+                actorIdentifier,
+                targetType,
+                targetId,
+                audit.CorrelationId,
+                details);
+
+            return;
+        }
+
+        if (configuredLevel == "ERROR")
+        {
+            return;
+        }
+
+        if (configuredLevel == "DEBUG")
+        {
+            _logger.LogDebug(
+                message,
+                operation,
+                success,
+                actorType,
+                actorIdentifier,
+                targetType,
+                targetId,
+                audit.CorrelationId,
+                details);
+            return;
+        }
+
+        _logger.LogInformation(
+            message,
+            operation,
+            success,
+            actorType,
+            actorIdentifier,
+            targetType,
+            targetId,
+            audit.CorrelationId,
+            details);
     }
 }

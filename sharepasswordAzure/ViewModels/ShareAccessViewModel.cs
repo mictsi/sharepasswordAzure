@@ -4,7 +4,6 @@ namespace SharePassword.ViewModels;
 
 public class ShareAccessViewModel
 {
-    [Required]
     [EmailAddress]
     [Display(Name = "Email address")]
     public string Email { get; set; } = string.Empty;
@@ -14,4 +13,5 @@ public class ShareAccessViewModel
     public string Code { get; set; } = string.Empty;
 
     public string Token { get; set; } = string.Empty;
+    public bool RequireOidcLogin { get; set; }
 }

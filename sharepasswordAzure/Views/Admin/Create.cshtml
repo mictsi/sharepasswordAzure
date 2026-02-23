@@ -33,6 +33,12 @@
         <span asp-validation-for="ExpiryHours" class="text-danger"></span>
     </div>
 
+    <div class="form-check mb-3">
+        <input asp-for="RequireOidcLogin" class="form-check-input" />
+        <label asp-for="RequireOidcLogin" class="form-check-label"></label>
+        <span asp-validation-for="RequireOidcLogin" class="text-danger"></span>
+    </div>
+
     <button type="submit" class="btn btn-primary">Create Share</button>
     <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
