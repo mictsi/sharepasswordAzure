@@ -3,7 +3,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 [![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
-Latest release: `0.2.1` (2026-02-23). See `../RELEASE_NOTES.md`.
+Latest release: `0.2.2` (2026-02-23). See `../RELEASE_NOTES.md`.
 
 Secure password sharing for external users with:
 

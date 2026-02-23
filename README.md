@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.1` (2026-02-23).
+Latest release: `0.2.2` (2026-02-23).
 
 ## Repository layout
 
@@ -49,14 +49,12 @@ Example:
 
 The script prints JSON output with created resource names and app environment variable values.
 
-## 0.2.1 highlights
+## 0.2.2 highlights
 
-- Audit logging hardening for user-input sanitization.
-- Optional per-share Entra ID-only access mode.
-- Recipient enforcement for OIDC-protected links.
-- Audit logs UI with paging/search (default 100 rows).
-- Configurable console audit logging levels (`DEBUG`, `INFO`, `ERROR`).
-- Provisioning script assigns `Key Vault Secrets Officer` for app secret write permissions.
+- Modernized UI theme with improved readability, visual hierarchy, and accessible focus states.
+- Refined Admin and Share pages with cleaner form, table, badge, and pagination styling.
+- Logo moved to `sharepasswordAzure/wwwroot/images/logo.png` and integrated into navbar branding.
+- Access mode badge text clarified to `Entra ID Required + Email + Code`.
 
 ## Flowdiagram
 

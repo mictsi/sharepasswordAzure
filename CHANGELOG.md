@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.2] - 2026-02-23
+
+### Added
+- Introduced a modernized global visual theme with improved focus states and accessibility-oriented styling.
+- Added route-scoped Admin/Share UI refinements for tables, forms, badges, headings, and pagination.
+
+### Changed
+- Moved the application logo to `sharepasswordAzure/wwwroot/images/logo.png` and updated shared layout branding.
+- Updated access mode badge wording from `Entra ID Required` to `Entra ID Required + Email + Code`.
+- Updated project version metadata in `sharepasswordAzure.csproj` to `0.2.2`.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`8` tests).
+
 ## [0.2.1] - 2026-02-23
 
 ### Security

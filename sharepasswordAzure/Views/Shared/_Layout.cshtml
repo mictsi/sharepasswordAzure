@@ -3,6 +3,8 @@
 @inject IOptions<OidcAuthOptions> OidcAuthOptions
 @{
     var adminRoleName = string.IsNullOrWhiteSpace(OidcAuthOptions.Value.AdminRoleName) ? "Admin" : OidcAuthOptions.Value.AdminRoleName.Trim();
+    var controllerName = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "home").ToLowerInvariant();
+    var actionName = (ViewContext.RouteData.Values["action"]?.ToString() ?? "index").ToLowerInvariant();
 }
 
 <!DOCTYPE html>
@@ -15,29 +17,32 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body>
+<body class="controller-@controllerName action-@actionName">
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+        <nav class="navbar navbar-expand-lg navbar-light app-navbar">
             <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Admin" asp-action="Index">SharePassword</a>
+                <a class="navbar-brand" asp-area="" asp-controller="Admin" asp-action="Index" aria-label="SharePassword home">
+                    <img src="~/images/logo.png" alt="SharePassword logo" class="brand-logo" />
+                    <span class="brand-text">SharePassword</span>
+                </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                <div class="navbar-collapse collapse d-lg-inline-flex justify-content-between">
                     @if (User.Identity?.IsAuthenticated == true)
                     {
                         <ul class="navbar-nav flex-grow-1">
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Index">Dashboard</a>
+                                <a class="nav-link" asp-controller="Admin" asp-action="Index">Dashboard</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Admin" asp-action="Create">New Share</a>
+                                <a class="nav-link" asp-controller="Admin" asp-action="Create">New Share</a>
                             </li>
                             @if (User.IsInRole(adminRoleName))
                             {
                                 <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-controller="Admin" asp-action="Audit">Audit Logs</a>
+                                    <a class="nav-link" asp-controller="Admin" asp-action="Audit">Audit Logs</a>
                                 </li>
                             }
                         </ul>
@@ -49,7 +54,7 @@
                     {
                         <ul class="navbar-nav flex-grow-1">
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Login">Admin Login</a>
+                                <a class="nav-link" asp-controller="Account" asp-action="Login">Admin Login</a>
                             </li>
                         </ul>
                     }
@@ -57,15 +62,15 @@
             </div>
         </nav>
     </header>
-    <div class="container">
+    <div class="container app-main-container">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
+    <footer class="footer text-muted">
         <div class="container">
-            &copy; 2026 - SharePassword
+            &copy; @DateTime.UtcNow.Year - SharePassword
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

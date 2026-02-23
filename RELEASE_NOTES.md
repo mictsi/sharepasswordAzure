@@ -1,5 +1,22 @@
 # Release Notes
 
+## v0.2.2
+
+UX and branding refresh release of `sharepasswordAzure`.
+
+### Highlights
+
+- Modernized the app interface for a cleaner, more professional and accessible experience.
+- Improved Admin and Share screen readability with refined table, form, badge, and pagination styling.
+- Moved logo asset to `wwwroot/images/logo.png` and updated navbar branding.
+- Updated Access Mode label to `Entra ID Required + Email + Code` for clearer user expectations.
+- Synchronized project version metadata to `0.2.2`.
+
+### Notes
+
+- Release date: 2026-02-23
+- Tag: `0.2.2`
+
 ## v0.2.1
 
 Security maintenance release of `sharepasswordAzure`.
