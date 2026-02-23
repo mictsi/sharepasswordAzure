@@ -23,6 +23,19 @@ public class AuditLogger : IAuditLogger
         _consoleAuditLoggingOptions = consoleAuditLoggingOptions.Value;
     }
 
+    private static string SanitizeForLogging(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // Remove line breaks to mitigate log forging in plain-text logs
+        return value
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
+    }
+
     public async Task LogAsync(
         string actorType,
         string actorIdentifier,
@@ -60,6 +73,12 @@ public class AuditLogger : IAuditLogger
         var configuredLevel = (_consoleAuditLoggingOptions.Level ?? "INFO").Trim().ToUpperInvariant();
         var message = "Audit event: Operation={Operation}, Success={Success}, ActorType={ActorType}, Actor={Actor}, TargetType={TargetType}, TargetId={TargetId}, CorrelationId={CorrelationId}, Details={Details}";
 
+        var sanitizedActorIdentifier = SanitizeForLogging(actorIdentifier);
+        var sanitizedTargetType = SanitizeForLogging(targetType);
+        var sanitizedTargetId = SanitizeForLogging(targetId);
+        var sanitizedDetails = SanitizeForLogging(details);
+        var sanitizedCorrelationId = SanitizeForLogging(audit.CorrelationId);
+
         if (!success)
         {
             _logger.LogError(
@@ -67,11 +86,11 @@ public class AuditLogger : IAuditLogger
                 operation,
                 success,
                 actorType,
-                actorIdentifier,
-                targetType,
-                targetId,
-                audit.CorrelationId,
-                details);
+                sanitizedActorIdentifier,
+                sanitizedTargetType,
+                sanitizedTargetId,
+                sanitizedCorrelationId,
+                sanitizedDetails);
 
             return;
         }
@@ -88,11 +107,11 @@ public class AuditLogger : IAuditLogger
                 operation,
                 success,
                 actorType,
-                actorIdentifier,
-                targetType,
-                targetId,
-                audit.CorrelationId,
-                details);
+                sanitizedActorIdentifier,
+                sanitizedTargetType,
+                sanitizedTargetId,
+                sanitizedCorrelationId,
+                sanitizedDetails);
             return;
         }
 
@@ -101,10 +120,10 @@ public class AuditLogger : IAuditLogger
             operation,
             success,
             actorType,
-            actorIdentifier,
-            targetType,
-            targetId,
-            audit.CorrelationId,
-            details);
+            sanitizedActorIdentifier,
+            sanitizedTargetType,
+            sanitizedTargetId,
+            sanitizedCorrelationId,
+            sanitizedDetails);
     }
 }
