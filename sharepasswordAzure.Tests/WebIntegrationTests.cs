@@ -54,6 +54,34 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task AdminCanCreateShare_WithMultilineYamlJsonAndSpecialText_PreservesExactValue()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var recipientEmail = $"recipient-{Guid.NewGuid():N}@example.com";
+        const string sharedUsername = "external.user";
+        var prefix = "plain text line 1\nline 2 with symbols !@#$%^&*()[]{}<>\\\"'\n---\nkey: value\nlist:\n  - one\n  - two\n{\"json\":true,\"count\":2}\n";
+        var secret = prefix + new string('x', 1000 - prefix.Length);
+
+        var created = await CreateShareAsync(client, recipientEmail, sharedUsername, secret);
+        var accessResponse = await AccessShareAsync(client, created.SharePath, recipientEmail, created.AccessCode);
+        var accessHtml = await accessResponse.Content.ReadAsStringAsync();
+
+        accessResponse.EnsureSuccessStatusCode();
+
+        var textareaMatch = Regex.Match(
+            accessHtml,
+            "<textarea[^>]*readonly[^>]*>(?<secret>.*?)</textarea>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+        Assert.True(textareaMatch.Success, "Readonly secret textarea was not found.");
+
+        var decodedSecret = WebUtility.HtmlDecode(textareaMatch.Groups["secret"].Value);
+        Assert.Equal(secret, decodedSecret);
+    }
+
+    [Fact]
     public async Task ExternalUserCanDeleteRetrievedPassword_AfterViewingCredential()
     {
         using var client = CreateClient();

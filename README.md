@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.2` (2026-02-23).
+Latest release: `0.2.3` (2026-02-24).
 
 ## Repository layout
 
@@ -49,12 +49,12 @@ Example:
 
 The script prints JSON output with created resource names and app environment variable values.
 
-## 0.2.2 highlights
+## 0.2.3 highlights
 
-- Modernized UI theme with improved readability, visual hierarchy, and accessible focus states.
-- Refined Admin and Share pages with cleaner form, table, badge, and pagination styling.
-- Logo moved to `sharepasswordAzure/wwwroot/images/logo.png` and integrated into navbar branding.
-- Access mode badge text clarified to `Entra ID Required + Email + Code`.
+- Secret text field now supports up to `1000` characters, including multiline content.
+- Secret text formatting is preserved for plain text, special characters, YAML, and JSON.
+- Admin create form now shows live character count, remaining characters, and over-limit warning state.
+- Retrieved secret text is displayed in a readonly multiline field to preserve exact content layout.
 
 ## Flowdiagram
 

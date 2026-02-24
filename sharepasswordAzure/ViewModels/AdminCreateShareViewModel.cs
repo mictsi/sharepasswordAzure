@@ -14,8 +14,9 @@ public class AdminCreateShareViewModel
     public string SharedUsername { get; set; } = string.Empty;
 
     [Required]
-    [DataType(DataType.Password)]
-    [Display(Name = "Password")]
+    [StringLength(1000, ErrorMessage = "Secret text cannot exceed 1000 characters.")]
+    [DataType(DataType.MultilineText)]
+    [Display(Name = "Secret text")]
     public string Password { get; set; } = string.Empty;
 
     [Range(1, 168)]

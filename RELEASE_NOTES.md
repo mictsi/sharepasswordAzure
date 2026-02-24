@@ -1,5 +1,22 @@
 # Release Notes
 
+## v0.2.3
+
+Secret text handling and usability release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added multiline secret text support up to `1000` characters in the share creation flow.
+- Preserved exact secret formatting for plain text, special characters, YAML, and JSON across create/access workflows.
+- Added live character counter with remaining characters display and over-limit warning in the admin create form.
+- Updated shared credential display to readonly multiline rendering for better fidelity of retrieved secret text.
+- Added unit and integration tests for multiline/special-content round-trip behavior.
+
+### Notes
+
+- Release date: 2026-02-24
+- Tag: `0.2.3`
+
 ## v0.2.2
 
 UX and branding refresh release of `sharepasswordAzure`.

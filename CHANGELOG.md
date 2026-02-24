@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.3] - 2026-02-24
+
+### Added
+- Added support for multiline secret text input with a maximum size of `1000` characters.
+- Added live character counting with remaining characters indicator in the share creation form.
+- Added over-limit warning state in the share creation form when secret text exceeds `1000` characters.
+- Added test coverage for exact round-trip preservation of multiline/special/YAML/JSON secret content.
+
+### Changed
+- Updated create form secret field from single-line password input to multiline textarea for preserving formatting.
+- Updated credential display to render secret text in a readonly textarea to preserve line breaks and special characters.
+- Updated project version metadata in `sharepasswordAzure.csproj` to `0.2.3`.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`10` tests).
+
 ## [0.2.2] - 2026-02-23
 
 ### Added
