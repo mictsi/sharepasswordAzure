@@ -39,7 +39,7 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
-            HandleCookies = false,
+            HandleCookies = true,
             AllowAutoRedirect = false
         });
 
