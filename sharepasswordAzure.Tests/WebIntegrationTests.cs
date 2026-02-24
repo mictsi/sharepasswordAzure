@@ -34,6 +34,42 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task AdminLogin_SetsSessionCookie_WithoutPersistentExpiry()
+    {
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = false,
+            AllowAutoRedirect = false
+        });
+
+        var loginPageResponse = await client.GetAsync("/account/login");
+        var loginPage = await loginPageResponse.Content.ReadAsStringAsync();
+        var antiForgery = ExtractAntiForgeryToken(loginPage);
+
+        var loginRequest = new HttpRequestMessage(HttpMethod.Post, "/account/login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgery,
+                ["Username"] = "admin",
+                ["Password"] = "admin123!ChangeMe"
+            })
+        };
+
+        loginRequest.Headers.Referrer = new Uri("https://localhost/account/login");
+        var loginResponse = await client.SendAsync(loginRequest);
+
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+        Assert.True(loginResponse.Headers.TryGetValues("Set-Cookie", out var cookieHeaders));
+
+        var authCookie = cookieHeaders.FirstOrDefault(x => x.StartsWith(".AspNetCore.Cookies=", StringComparison.Ordinal));
+        Assert.False(string.IsNullOrWhiteSpace(authCookie));
+        Assert.DoesNotContain("expires=", authCookie!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("max-age=", authCookie!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Get_Health_ReturnsSuccess()
     {
         using var client = CreateClient();

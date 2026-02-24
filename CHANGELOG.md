@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.5] - 2026-02-24
+
+### Added
+- Added security headers middleware in `Program.cs` with `Content-Security-Policy` (including `frame-ancestors 'none'`), `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy`.
+- Added integration test coverage to validate authentication cookie is issued as a non-persistent session cookie (no `Expires`/`Max-Age`).
+
+### Changed
+- Updated project version metadata in `sharepasswordAzure.csproj` to `0.2.5`.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes.
+
 ## [0.2.4] - 2026-02-24
 
 ### Added

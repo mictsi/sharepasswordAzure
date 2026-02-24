@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.4` (2026-02-24).
+Latest release: `0.2.5` (2026-02-24).
 
 ## Repository layout
 
@@ -73,12 +73,11 @@ Example:
 
 The script prints the deployed app URL and Azure Portal URL on success.
 
-## 0.2.4 highlights
+## 0.2.5 highlights
 
-- Added health check endpoint at `/health`.
-- Hardened auth session cookie behavior for secure-only transport and browser-session lifetime.
-- Updated local development defaults to HTTPS (`https://localhost:7099`).
-- Added App Service deployment automation script with settings loading from development config.
+- Added security headers middleware (`CSP`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`).
+- Added integration test to verify auth cookie is non-persistent and clears on browser close.
+- Maintained existing health endpoint and HTTPS/cookie hardening from prior releases.
 
 ## Flowdiagram
 

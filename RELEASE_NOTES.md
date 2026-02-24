@@ -1,5 +1,23 @@
 # Release Notes
 
+## v0.2.5
+
+Security headers and session-cookie validation release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added security headers middleware in `Program.cs`:
+	- `Content-Security-Policy` (with `frame-ancestors 'none'`)
+	- `X-Frame-Options: DENY`
+	- `X-Content-Type-Options: nosniff`
+	- `Referrer-Policy: strict-origin-when-cross-origin`
+- Added integration test to verify auth cookie is session-based (non-persistent, no `Expires`/`Max-Age`).
+
+### Notes
+
+- Release date: 2026-02-24
+- Tag: `0.2.5`
+
 ## v0.2.4
 
 Security and deployment hardening release of `sharepasswordAzure`.
