@@ -19,7 +19,7 @@ Write-Host "ASPNETCORE_ENVIRONMENT=$Environment" -ForegroundColor DarkGray
 
 if ([string]::IsNullOrWhiteSpace($Urls)) {
     Write-Host "Starting sharepasswordAzure using URL/port from appsettings" -ForegroundColor Green
-    Write-Host "Press -Urls to override (example: -Urls http://localhost:5099)" -ForegroundColor DarkGray
+    Write-Host "Press -Urls to override (example: -Urls https://localhost:7099)" -ForegroundColor DarkGray
     Write-Host "Press Ctrl+C to stop." -ForegroundColor Yellow
     dotnet run --project $ProjectPath -c $Configuration --no-launch-profile
     exit $LASTEXITCODE

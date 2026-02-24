@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.2.4
+
+Security and deployment hardening release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added built-in health endpoint at `/health` and integration test validation.
+- Hardened auth cookie/session behavior for security (`Secure` cookies and non-persistent sign-in).
+- Switched local development defaults to HTTPS and aligned startup/config documentation.
+- Added and improved Azure App Service deployment automation script with appsettings-driven configuration and robust app-settings application.
+
+### Notes
+
+- Release date: 2026-02-24
+- Tag: `0.2.4`
+
 ## v0.2.3
 
 Secret text handling and usability release of `sharepasswordAzure`.

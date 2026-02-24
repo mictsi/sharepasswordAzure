@@ -17,7 +17,7 @@ echo "ASPNETCORE_ENVIRONMENT=$ENVIRONMENT"
 
 if [[ -z "$URLS" ]]; then
 	echo "Starting sharepasswordAzure using URL/port from appsettings"
-	echo "Pass arg2 to override URL (example: ./start-linux.sh ./sharepasswordAzure/sharepasswordAzure.csproj http://localhost:5099)"
+	echo "Pass arg2 to override URL (example: ./start-linux.sh ./sharepasswordAzure/sharepasswordAzure.csproj https://localhost:7099)"
 	echo "Press Ctrl+C to stop."
 	dotnet run --project "$PROJECT_PATH" -c "$CONFIGURATION" --no-launch-profile
 	exit $?

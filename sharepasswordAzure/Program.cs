@@ -23,6 +23,7 @@ builder.Services.Configure<AzureKeyVaultOptions>(builder.Configuration.GetSectio
 builder.Services.Configure<ConsoleAuditLoggingOptions>(builder.Configuration.GetSection(ConsoleAuditLoggingOptions.SectionName));
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddHealthChecks();
 
 var oidcOptions = builder.Configuration.GetSection(OidcAuthOptions.SectionName).Get<OidcAuthOptions>() ?? new OidcAuthOptions();
 var adminRoleName = string.IsNullOrWhiteSpace(oidcOptions.AdminRoleName) ? "Admin" : oidcOptions.AdminRoleName.Trim();
@@ -43,10 +44,9 @@ var authenticationBuilder = builder.Services
         options.AccessDeniedPath = "/account/login";
         options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
         options.SlidingExpiration = true;
-        options.Cookie.MaxAge = TimeSpan.FromMinutes(60);
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     });
 
 if (oidcOptions.Enabled)
@@ -323,6 +323,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
+app.MapHealthChecks("/health");
 
 app.MapControllerRoute(
     name: "share-link",

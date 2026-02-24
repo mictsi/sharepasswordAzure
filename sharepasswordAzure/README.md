@@ -3,7 +3,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 [![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
-Latest release: `0.2.3` (2026-02-24). See `../RELEASE_NOTES.md`.
+Latest release: `0.2.4` (2026-02-24). See `../RELEASE_NOTES.md`.
 
 Secure password sharing for external users with:
 
@@ -38,12 +38,12 @@ chmod +x ./start-linux.sh
 ./start-linux.sh
 ```
 
-By default, scripts use URL/port from `sharepasswordAzure/appsettings*.json` (`Kestrel:Endpoints:Http:Url`).
+By default, scripts use URL/port from `sharepasswordAzure/appsettings*.json` (development default: `Kestrel:Endpoints:Https:Url`).
 
 Optional overrides:
 
-- Windows: `./start-win.ps1 -ProjectPath ./sharepasswordAzure/sharepasswordAzure.csproj -Urls http://localhost:5199 -Configuration Release -Environment Development`
-- Linux: `./start-linux.sh ./sharepasswordAzure/sharepasswordAzure.csproj http://localhost:5199 Release Development`
+- Windows: `./start-win.ps1 -ProjectPath ./sharepasswordAzure/sharepasswordAzure.csproj -Urls https://localhost:7099 -Configuration Release -Environment Development`
+- Linux: `./start-linux.sh ./sharepasswordAzure/sharepasswordAzure.csproj https://localhost:7099 Release Development`
 
 ## Configuration
 
@@ -119,7 +119,7 @@ Configuration is read from JSON files and environment variables. Use `__` for ne
 
 Examples:
 
-- `Kestrel__Endpoints__Http__Url=http://localhost:5099`
+- `Kestrel__Endpoints__Https__Url=https://localhost:7099`
 - `AzureKeyVault__VaultUri=https://passwordmanagerazure.vault.azure.net/`
 - `AzureKeyVault__TenantId=<tenant-id>`
 - `AzureKeyVault__ClientId=<client-id>`

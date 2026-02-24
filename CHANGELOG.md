@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.4] - 2026-02-24
+
+### Added
+- Added health check endpoint at `/health`.
+- Added integration test coverage for health endpoint availability.
+- Added App Service deployment automation script (`scripts/deploy-appservice.ps1`) to create resources, apply app settings, and deploy package artifacts.
+
+### Changed
+- Hardened authentication cookie behavior: secure-only cookie policy and non-persistent sign-in so sessions expire when browser is closed.
+- Updated local development defaults to HTTPS (`https://localhost:7099`) across development settings, launch profiles, and startup script examples.
+- Enhanced App Service deployment script to read settings from `sharepasswordAzure/appsettings.Development.json` by default and correctly apply complex app settings (including SAS URLs and OIDC arrays).
+- Updated project version metadata in `sharepasswordAzure.csproj` to `0.2.4`.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes.
+
 ## [0.2.3] - 2026-02-24
 
 ### Added

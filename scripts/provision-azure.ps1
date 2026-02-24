@@ -24,7 +24,7 @@ param(
     [switch]$SkipOidcAppRegistration,
 
     # Base URL used to build OIDC redirect/logout callback URIs.
-    [string]$OidcRedirectBaseUrl = "http://localhost:5099",
+    [string]$OidcRedirectBaseUrl = "https://localhost:7099",
 
     [string]$OidcCallbackPath = "/signin-oidc",
     [string]$OidcSignedOutCallbackPath = "/signout-callback-oidc",

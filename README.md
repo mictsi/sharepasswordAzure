@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.3` (2026-02-24).
+Latest release: `0.2.4` (2026-02-24).
 
 ## Repository layout
 
@@ -49,12 +49,36 @@ Example:
 
 The script prints JSON output with created resource names and app environment variable values.
 
-## 0.2.3 highlights
+## Azure App Service deployment script
 
-- Secret text field now supports up to `1000` characters, including multiline content.
-- Secret text formatting is preserved for plain text, special characters, YAML, and JSON.
-- Admin create form now shows live character count, remaining characters, and over-limit warning state.
-- Retrieved secret text is displayed in a readonly multiline field to preserve exact content layout.
+A helper script is available at `scripts/deploy-appservice.ps1` to:
+
+- Create/update resource group
+- Create/update Linux App Service plan and Web App
+- Configure required app settings (environment variables)
+- Publish and deploy the app package
+
+By default, the script reads application settings from `sharepasswordAzure/appsettings.Development.json` (for example Key Vault, Table SAS URL, admin credentials, OIDC, encryption, and share settings). CLI parameters still override file values when provided.
+
+Example:
+
+```powershell
+./scripts/deploy-appservice.ps1 `
+    -SubscriptionId "<subscription-id>" `
+    -ResourceGroupName "rg-sharepassword-prod" `
+    -Location "swedencentral" `
+    -AppServicePlanName "asp-sharepassword-prod" `
+    -WebAppName "app-sharepassword-prod"
+```
+
+The script prints the deployed app URL and Azure Portal URL on success.
+
+## 0.2.4 highlights
+
+- Added health check endpoint at `/health`.
+- Hardened auth session cookie behavior for secure-only transport and browser-session lifetime.
+- Updated local development defaults to HTTPS (`https://localhost:7099`).
+- Added App Service deployment automation script with settings loading from development config.
 
 ## Flowdiagram
 

@@ -34,6 +34,16 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_Health_ReturnsSuccess()
+    {
+        using var client = CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task AdminCanCreateShare_ExternalUserCanAccessWithEmailAndCode()
     {
         using var client = CreateClient();
