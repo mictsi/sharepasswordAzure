@@ -18,6 +18,7 @@ All notable changes to this project are documented in this file.
 ### Verified
 - Solution build succeeds.
 - Test suite passes (`10` tests).
+- Release: https://github.com/mictsi/sharepasswordAzure/releases/tag/0.2.3
 
 ## [0.2.2] - 2026-02-23
 
