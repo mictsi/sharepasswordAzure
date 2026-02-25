@@ -81,6 +81,11 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(AdminCreateShareViewModel model)
     {
+        model.RecipientEmail = (model.RecipientEmail ?? string.Empty).Trim();
+        model.SharedUsername = (model.SharedUsername ?? string.Empty).Trim();
+        model.Password = (model.Password ?? string.Empty).Replace("\0", string.Empty);
+        model.Instructions = (model.Instructions ?? string.Empty).Replace("\0", string.Empty);
+
         if (model.RequireOidcLogin && !_oidcAuthOptions.Enabled)
         {
             ModelState.AddModelError(nameof(model.RequireOidcLogin), "OIDC must be enabled before requiring Entra ID login for share links.");
@@ -103,6 +108,7 @@ public class AdminController : Controller
             RecipientEmail = model.RecipientEmail.Trim().ToLowerInvariant(),
             SharedUsername = model.SharedUsername.Trim(),
             EncryptedPassword = _passwordCryptoService.Encrypt(model.Password),
+            Instructions = model.Instructions,
             AccessCodeHash = _accessCodeService.HashCode(accessCode),
             AccessToken = token,
             CreatedAtUtc = now,

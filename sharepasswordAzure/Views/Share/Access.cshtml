@@ -22,13 +22,13 @@
 
             <div class="mb-3">
                 <label asp-for="Email" class="form-label"></label>
-                <input asp-for="Email" class="form-control" readonly="@(Model.RequireOidcLogin ? "readonly" : null)" />
+                <input asp-for="Email" class="form-control" maxlength="256" readonly="@(Model.RequireOidcLogin ? "readonly" : null)" />
                 <span asp-validation-for="Email" class="text-danger"></span>
             </div>
 
             <div class="mb-3">
                 <label asp-for="Code" class="form-label"></label>
-                <input asp-for="Code" class="form-control" />
+                <input asp-for="Code" class="form-control" maxlength="8" autocomplete="one-time-code" />
                 <span asp-validation-for="Code" class="text-danger"></span>
             </div>
 

@@ -1,5 +1,23 @@
 # Release Notes
 
+## v0.2.6
+
+Instructions field and input-hardening release of `sharepasswordAzure`.
+
+### Highlights
+
+- Added `Instructions` field to password share creation with multiline support and a `1000` character limit.
+- Added `Instructions` retrieval/display alongside secret text while preserving formatting.
+- Added explicit operator guidance on the "Password Share Created" page:
+	- Send recipient, link, and expiration time via email.
+	- Send access code via SMS to recipient mobile phone.
+- Hardened user-input handling and validation for link token, access code, and key form fields.
+
+### Notes
+
+- Release date: 2026-02-25
+- Tag: `0.2.6`
+
 ## v0.2.5
 
 Security headers and session-cookie validation release of `sharepasswordAzure`.

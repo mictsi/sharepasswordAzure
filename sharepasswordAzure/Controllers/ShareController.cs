@@ -11,6 +11,8 @@ namespace SharePassword.Controllers;
 
 public class ShareController : Controller
 {
+    private const int AccessCodeLength = 8;
+
     private readonly IShareStore _shareStore;
     private readonly IAccessCodeService _accessCodeService;
     private readonly IPasswordCryptoService _passwordCryptoService;
@@ -34,6 +36,12 @@ public class ShareController : Controller
     [HttpGet]
     public async Task<IActionResult> Access(string token)
     {
+        token = (token ?? string.Empty).Trim();
+        if (!IsValidToken(token))
+        {
+            return BadRequest();
+        }
+
         var share = await _shareStore.GetShareByTokenAsync(token);
         var model = new ShareAccessViewModel { Token = token, RequireOidcLogin = share?.RequireOidcLogin ?? false };
 
@@ -75,6 +83,19 @@ public class ShareController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Access(ShareAccessViewModel model)
     {
+        model.Token = (model.Token ?? string.Empty).Trim();
+        model.Code = (model.Code ?? string.Empty).Trim().ToUpperInvariant();
+
+        if (!IsValidToken(model.Token))
+        {
+            return BadRequest();
+        }
+
+        if (model.Code.Length != AccessCodeLength || !model.Code.All(char.IsLetterOrDigit))
+        {
+            ModelState.AddModelError(nameof(model.Code), "Access code format is invalid.");
+        }
+
         var share = await _shareStore.GetShareByTokenAsync(model.Token);
         model.RequireOidcLogin = share?.RequireOidcLogin ?? false;
 
@@ -146,7 +167,7 @@ public class ShareController : Controller
             return View(model);
         }
 
-        if (!_accessCodeService.Verify(model.Code.Trim().ToUpperInvariant(), share.AccessCodeHash))
+        if (!_accessCodeService.Verify(model.Code, share.AccessCodeHash))
         {
             await _auditLogger.LogAsync("external-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), "Access code mismatch.");
             ModelState.AddModelError(string.Empty, "Invalid link or access details.");
@@ -165,6 +186,7 @@ public class ShareController : Controller
             RecipientEmail = email,
             Username = share.SharedUsername,
             Password = decryptedPassword,
+            Instructions = share.Instructions,
             ExpiresAtUtc = share.ExpiresAtUtc
         });
     }
@@ -201,5 +223,10 @@ public class ShareController : Controller
                ?? User.FindFirstValue("upn")?.Trim().ToLowerInvariant()
                ?? User.FindFirstValue("unique_name")?.Trim().ToLowerInvariant()
                ?? string.Empty;
+    }
+
+    private static bool IsValidToken(string token)
+    {
+        return token.Length == 32 && token.All(Uri.IsHexDigit);
     }
 }

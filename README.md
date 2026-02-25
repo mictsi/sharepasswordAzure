@@ -4,7 +4,7 @@
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
-Latest release: `0.2.5` (2026-02-24).
+Latest release: `0.2.6` (2026-02-25).
 
 ## Repository layout
 
@@ -73,11 +73,14 @@ Example:
 
 The script prints the deployed app URL and Azure Portal URL on success.
 
-## 0.2.5 highlights
+## 0.2.6 highlights
 
-- Added security headers middleware (`CSP`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`).
-- Added integration test to verify auth cookie is non-persistent and clears on browser close.
-- Maintained existing health endpoint and HTTPS/cookie hardening from prior releases.
+- Added `Instructions` field for password shares with multiline formatting support and `1000` character limit.
+- Updated share retrieval view to show both `Secret text` and `Instructions` preserving formatting.
+- Added sharing guidance on the "Password Share Created" page:
+    - Send recipient, link, and expiration time by email.
+    - Send access code via SMS to recipient mobile phone.
+- Hardened user input validation for token, access code, recipient email, and username lengths/formats.
 
 ## Flowdiagram
 
@@ -85,14 +88,15 @@ The script prints the deployed app URL and Azure Portal URL on success.
 flowchart TD
     S1["1. Admin logs in"] --> S2["2. Admin creates a password share"]
     S2 --> S3["3. App generates a secure link and access code"]
-    S3 --> S4["4. Admin sends link and code to recipient"]
-    S4 --> S5["5. Recipient opens link"]
-    S5 --> S6["6. Recipient enters email and access code"]
-    S6 --> S7["7. App verifies details"]
-    S7 --> S8["8. App shows username and password"]
-    S8 --> S9["9. Recipient clicks: I have retrieved the passwrod. Delete the password"]
-    S9 --> S10{"10. Recipient confirms in dialog?"}
-    S10 -->|Yes| S11["11. App deletes the password"]
-    S10 -->|No| S12["12. Password remains until expiry"]
-    S12 --> S13["13. Share expires automatically after set time"]
+    S3 --> S4["4. Admin sends recipient, link, and expiration by email"]
+    S4 --> S4A["5. Admin sends access code by SMS"]
+    S4A --> S5["6. Recipient opens link"]
+    S5 --> S6["7. Recipient enters email and access code"]
+    S6 --> S7["8. App verifies details"]
+    S7 --> S8["9. App shows username, secret text, and instructions"]
+    S8 --> S9["10. Recipient clicks: I have retrieved the password. Delete the password"]
+    S9 --> S10{"11. Recipient confirms in dialog?"}
+    S10 -->|Yes| S11["12. App deletes the password"]
+    S10 -->|No| S12["13. Password remains until expiry"]
+    S12 --> S13["14. Share expires automatically after set time"]
 ```

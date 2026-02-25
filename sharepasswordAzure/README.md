@@ -3,7 +3,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 [![Build](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepasswordAzure/actions/workflows/build.yml)
 
-Latest release: `0.2.5` (2026-02-24). See `../RELEASE_NOTES.md`.
+Latest release: `0.2.6` (2026-02-25). See `../RELEASE_NOTES.md`.
 
 Secure password sharing for external users with:
 
@@ -153,16 +153,23 @@ For array values (for example scopes), use indexed variables:
 ## Usage
 
 1. Open `/account/login` and sign in as admin.
-2. Create share with recipient email + username + secret text + expiry.
-3. Copy the generated unique link and one-time shown access code to the recipient.
-4. Recipient opens the link and submits email + code to view credentials/secret text.
-5. Share is removed automatically after expiration.
+2. Create share with recipient email + username + secret text + instructions + expiry.
+3. Send recipient email, unique link, and expiration time by email.
+4. Send the one-time access code separately via SMS to recipient mobile phone.
+5. Recipient opens the link and submits email + code to view credentials, secret text, and instructions.
+6. Share is removed automatically after expiration.
 
 Secret text notes:
 
 - Max length is `1000` characters.
 - Multiline content is supported.
 - Plain text, special characters, YAML, and JSON formatting are preserved end-to-end.
+
+Instructions notes:
+
+- Max length is `1000` characters.
+- Multiline content is supported.
+- Plain text formatting and line breaks are preserved end-to-end.
 
 ## Audit logs
 

@@ -13,7 +13,7 @@
     <dd class="col-sm-9">@Model.RecipientEmail</dd>
 
     <dt class="col-sm-3">Unique Link</dt>
-    <dd class="col-sm-9"><a href="@Model.ShareLink" target="_blank">@Model.ShareLink</a></dd>
+    <dd class="col-sm-9"><a href="@Model.ShareLink" target="_blank" rel="noopener noreferrer">@Model.ShareLink</a></dd>
 
     <dt class="col-sm-3">Access Code</dt>
     <dd class="col-sm-9"><strong>@Model.AccessCode</strong></dd>
@@ -24,5 +24,12 @@
     <dt class="col-sm-3">Expires (UTC)</dt>
     <dd class="col-sm-9">@Model.ExpiresAtUtc.ToString("u")</dd>
 </dl>
+
+<div class="alert alert-info">
+    <h5>Instructions for sharing a password</h5>
+    <p class="mb-1">Instructions how to send the password information to user.</p>
+    <p class="mb-1">You are allowed to "Send the Recipient, link and expiration time via email to user"</p>
+    <p class="mb-0">Access code should be sent to the users via sms to mobile phone</p>
+</div>
 
 <a class="btn btn-primary" asp-action="Index">Back to Dashboard</a>

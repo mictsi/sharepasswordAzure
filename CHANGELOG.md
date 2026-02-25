@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.6] - 2026-02-25
+
+### Added
+- Added `Instructions` field in password share creation flow with multiline support and a `1000` character limit.
+- Added live character counter and over-limit warning for `Instructions` in admin create form.
+- Added `Instructions` display in retrieved credential view using readonly textarea to preserve formatting.
+- Added explicit sharing guidance in "Password Share Created" page:
+	- Send recipient, link, and expiration time by email.
+	- Send access code via SMS to recipient mobile phone.
+
+### Security
+- Hardened user input validation for share access token format (hex/length), access code format (length/alphanumeric), and email/username length limits.
+- Added defensive normalization for incoming create/access form values.
+- Added `rel="noopener noreferrer"` to external share link on created page.
+
+### Changed
+- Updated project version metadata in `sharepasswordAzure.csproj` to `0.2.6`.
+
+### Verified
+- Solution build succeeds.
+- Test suite passes (`12` tests).
+- Release: https://github.com/mictsi/sharepasswordAzure/releases/tag/0.2.6
+
 ## [0.2.5] - 2026-02-24
 
 ### Added

@@ -4,20 +4,20 @@
 }
 
 <h2>Create Password Share</h2>
-<p>Provide recipient email, username, secret text, and expiry time.</p>
+<p>Provide recipient email, username, secret text, instructions, and expiry time.</p>
 
 <form asp-action="Create" method="post">
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
     <div class="mb-3">
         <label asp-for="RecipientEmail" class="form-label"></label>
-        <input asp-for="RecipientEmail" class="form-control" />
+        <input asp-for="RecipientEmail" class="form-control" maxlength="256" />
         <span asp-validation-for="RecipientEmail" class="text-danger"></span>
     </div>
 
     <div class="mb-3">
         <label asp-for="SharedUsername" class="form-label"></label>
-        <input asp-for="SharedUsername" class="form-control" />
+        <input asp-for="SharedUsername" class="form-control" maxlength="256" />
         <span asp-validation-for="SharedUsername" class="text-danger"></span>
     </div>
 
@@ -27,6 +27,14 @@
         <div class="form-text" id="secretTextCounter">0 / 1000 characters (1000 left)</div>
         <div class="text-danger d-none" id="secretTextWarning">Secret text is over the 1000 character limit.</div>
         <span asp-validation-for="Password" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Instructions" class="form-label"></label>
+        <textarea asp-for="Instructions" class="form-control" rows="10" maxlength="1000" id="instructionsText"></textarea>
+        <div class="form-text" id="instructionsTextCounter">0 / 1000 characters (1000 left)</div>
+        <div class="text-danger d-none" id="instructionsTextWarning">Instructions are over the 1000 character limit.</div>
+        <span asp-validation-for="Instructions" class="text-danger"></span>
     </div>
 
     <div class="mb-3">
@@ -50,30 +58,36 @@
     <script>
         (function () {
             const maxChars = 1000;
-            const input = document.getElementById("secretText");
-            const counter = document.getElementById("secretTextCounter");
-            const warning = document.getElementById("secretTextWarning");
 
-            if (!input || !counter || !warning) {
-                return;
-            }
+            function wireCounter(inputId, counterId, warningId) {
+                const input = document.getElementById(inputId);
+                const counter = document.getElementById(counterId);
+                const warning = document.getElementById(warningId);
 
-            function updateCount() {
-                const length = input.value.length;
-                const remaining = Math.max(0, maxChars - length);
-                counter.textContent = `${length} / ${maxChars} characters (${remaining} left)`;
-
-                if (length > maxChars) {
-                    warning.classList.remove("d-none");
-                    counter.classList.add("text-danger");
-                } else {
-                    warning.classList.add("d-none");
-                    counter.classList.remove("text-danger");
+                if (!input || !counter || !warning) {
+                    return;
                 }
+
+                function updateCount() {
+                    const length = input.value.length;
+                    const remaining = Math.max(0, maxChars - length);
+                    counter.textContent = `${length} / ${maxChars} characters (${remaining} left)`;
+
+                    if (length > maxChars) {
+                        warning.classList.remove("d-none");
+                        counter.classList.add("text-danger");
+                    } else {
+                        warning.classList.add("d-none");
+                        counter.classList.remove("text-danger");
+                    }
+                }
+
+                input.addEventListener("input", updateCount);
+                updateCount();
             }
 
-            input.addEventListener("input", updateCount);
-            updateCount();
+            wireCounter("secretText", "secretTextCounter", "secretTextWarning");
+            wireCounter("instructionsText", "instructionsTextCounter", "instructionsTextWarning");
         })();
     </script>
 }
