@@ -254,6 +254,65 @@ main {
   max-width: 720px;
 }
 
+.controller-admin .audit-toolbar {
+  max-width: none;
+}
+
+.controller-admin .audit-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+}
+
+.controller-admin .audit-toolbar__search {
+  display: flex;
+  flex: 1 1 30rem;
+  align-items: stretch;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.controller-admin .audit-toolbar__search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.controller-admin .audit-toolbar__search .form-control {
+  width: 100%;
+}
+
+.controller-admin .audit-toolbar__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.controller-admin .audit-toolbar__actions .form-select {
+  min-width: 13rem;
+}
+
+.controller-admin .audit-toolbar .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+  .controller-admin .audit-toolbar__row,
+  .controller-admin .audit-toolbar__search,
+  .controller-admin .audit-toolbar__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controller-admin .audit-toolbar__actions {
+    margin-left: 0;
+  }
+}
+
 .controller-admin .pagination .page-link {
   color: var(--sp-color-brand);
   border-color: var(--sp-color-border);

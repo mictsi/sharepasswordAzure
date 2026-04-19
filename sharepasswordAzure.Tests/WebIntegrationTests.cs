@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -330,6 +331,78 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         var auditHtml = await client.GetStringAsync("/admin/audit");
         Assert.Contains("admin.login", auditHtml, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Invalid username/password.", auditHtml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AuditLogs_CanBeFilteredByDateRange()
+    {
+        await using var factory = new ConfiguredApplicationWebApplicationFactory(new Dictionary<string, string?>());
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        var auditStore = factory.Services.GetRequiredService<InMemoryAuditStore>();
+        await auditStore.AddAuditAsync(new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow.AddMonths(-7),
+            ActorType = "admin",
+            ActorIdentifier = "old-admin",
+            Operation = "share.create",
+            Success = true,
+            Details = "Too old"
+        });
+        await auditStore.AddAuditAsync(new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow.AddDays(-3),
+            ActorType = "admin",
+            ActorIdentifier = "recent-admin",
+            Operation = "share.revoke",
+            Success = true,
+            Details = "Recent enough"
+        });
+
+        await LoginAsAdminAsync(client);
+
+        var filteredHtml = await client.GetStringAsync("/admin/audit?range=last-6-months");
+
+        Assert.Contains("recent-admin", filteredHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("old-admin", filteredHtml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AuditLogs_CanBeExportedAsJson()
+    {
+        await using var factory = new ConfiguredApplicationWebApplicationFactory(new Dictionary<string, string?>());
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        var auditStore = factory.Services.GetRequiredService<InMemoryAuditStore>();
+        await auditStore.AddAuditAsync(new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow,
+            ActorType = "admin",
+            ActorIdentifier = "export-admin",
+            Operation = "share.create",
+            Success = true,
+            Details = "Export me"
+        });
+
+        await LoginAsAdminAsync(client);
+
+        var response = await client.GetAsync("/admin/exportauditjson?search=export-admin&range=all");
+        var json = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("export-admin", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"TimeZone\"", json, StringComparison.Ordinal);
     }
 
     [Fact]

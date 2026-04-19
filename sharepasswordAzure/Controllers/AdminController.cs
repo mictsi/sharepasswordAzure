@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using System.Security.Claims;
 using SharePassword.Models;
 using SharePassword.Options;
@@ -189,17 +190,19 @@ public class AdminController : Controller
 
     [HttpGet]
     [Authorize(Policy = "AdminOnly")]
-    public async Task<IActionResult> Audit(string? search, int page = 1, int pageSize = 100)
+    public async Task<IActionResult> Audit(string? search, string? range = null, int page = 1, int pageSize = 100)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 200);
 
         var logs = await _auditLogReader.GetLatestAsync(5000);
+        var normalizedRange = AdminAuditRangeOption.Normalize(range);
+        var filteredByRange = ApplyAuditRange(logs, normalizedRange);
 
         var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         var filtered = string.IsNullOrWhiteSpace(normalizedSearch)
-            ? logs
-            : logs.Where(x =>
+            ? filteredByRange
+            : filteredByRange.Where(x =>
                    Contains(x.ActorType, normalizedSearch)
                 || Contains(x.ActorIdentifier, normalizedSearch)
                 || Contains(x.Operation, normalizedSearch)
@@ -225,7 +228,9 @@ public class AdminController : Controller
         var model = new AdminAuditViewModel
         {
             Logs = pagedLogs,
+            ExportLogs = filtered.OrderByDescending(x => x.TimestampUtc).ToList(),
             Search = normalizedSearch,
+            SelectedRange = normalizedRange,
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
@@ -234,10 +239,85 @@ public class AdminController : Controller
         return View(model);
     }
 
+    [HttpGet]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<IActionResult> ExportAuditJson(string? search, string? range = null)
+    {
+        var logs = await _auditLogReader.GetLatestAsync(5000);
+        var normalizedRange = AdminAuditRangeOption.Normalize(range);
+        var filteredByRange = ApplyAuditRange(logs, normalizedRange);
+        var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+        var filtered = string.IsNullOrWhiteSpace(normalizedSearch)
+            ? filteredByRange
+            : filteredByRange.Where(x =>
+                   Contains(x.ActorType, normalizedSearch)
+                || Contains(x.ActorIdentifier, normalizedSearch)
+                || Contains(x.Operation, normalizedSearch)
+                || Contains(x.TargetType, normalizedSearch)
+                || Contains(x.TargetId, normalizedSearch)
+                || Contains(x.IpAddress, normalizedSearch)
+                || Contains(x.CorrelationId, normalizedSearch)
+                || Contains(x.Details, normalizedSearch))
+                .ToList();
+
+        var payload = filtered
+            .OrderByDescending(x => x.TimestampUtc)
+            .Select(log => new
+            {
+                log.Id,
+                log.TimestampUtc,
+                Timestamp = _applicationTime.FormatUtcForDisplay(log.TimestampUtc),
+                TimeZone = _applicationTime.TimeZoneId,
+                log.ActorType,
+                log.ActorIdentifier,
+                log.Operation,
+                log.Success,
+                log.TargetType,
+                log.TargetId,
+                log.IpAddress,
+                log.UserAgent,
+                log.CorrelationId,
+                log.Details
+            })
+            .ToList();
+
+        var fileName = $"audit-logs-{normalizedRange}-{_applicationTime.UtcNow:yyyyMMddHHmmss}.json";
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+        return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", fileName);
+    }
+
     private static bool Contains(string? source, string value)
     {
         return !string.IsNullOrWhiteSpace(source)
             && source.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private List<AuditLog> ApplyAuditRange(IReadOnlyCollection<AuditLog> logs, string normalizedRange)
+    {
+        var now = _applicationTime.Now;
+        var rangeStartUtc = normalizedRange switch
+        {
+            AdminAuditRangeOption.LastDay => now.AddDays(-1).UtcDateTime,
+            AdminAuditRangeOption.ThisWeek => GetStartOfWeek(now).UtcDateTime,
+            AdminAuditRangeOption.ThisMonth => new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, now.Offset).UtcDateTime,
+            AdminAuditRangeOption.Last3Months => now.AddMonths(-3).UtcDateTime,
+            AdminAuditRangeOption.Last6Months => now.AddMonths(-6).UtcDateTime,
+            _ => (DateTime?)null
+        };
+
+        return rangeStartUtc is null
+            ? logs.OrderByDescending(x => x.TimestampUtc).ToList()
+            : logs.Where(x => x.TimestampUtc >= rangeStartUtc.Value)
+                .OrderByDescending(x => x.TimestampUtc)
+                .ToList();
+    }
+
+    private static DateTimeOffset GetStartOfWeek(DateTimeOffset value)
+    {
+        var diff = ((int)value.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var start = value.Date.AddDays(-diff);
+        return new DateTimeOffset(start, value.Offset);
     }
 
     private string GetCurrentUserIdentifier()

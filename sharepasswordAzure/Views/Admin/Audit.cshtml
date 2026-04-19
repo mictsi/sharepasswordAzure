@@ -5,20 +5,31 @@
 
 <h2>Audit Logs</h2>
 
-<form method="get" class="row g-2 mb-3">
-    <div class="col-sm-6 col-md-4">
-        <input type="text" name="search" value="@Model.Search" class="form-control" placeholder="Search actor, operation, details..." />
-    </div>
-    <div class="col-auto">
-        <input type="hidden" name="pageSize" value="@Model.PageSize" />
-        <button type="submit" class="btn btn-primary">Search</button>
-    </div>
-    @if (!string.IsNullOrWhiteSpace(Model.Search))
-    {
-        <div class="col-auto">
-            <a class="btn btn-outline-secondary" href="@Url.Action("Audit", new { page = 1, pageSize = Model.PageSize })">Clear</a>
+<form method="get" class="audit-toolbar mb-3">
+    <input type="hidden" name="pageSize" value="@Model.PageSize" />
+
+    <div class="audit-toolbar__row">
+        <div class="audit-toolbar__search">
+            <div class="audit-toolbar__search-input">
+                <input type="text" name="search" value="@Model.Search" class="form-control" placeholder="Search actor, operation, details..." />
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+            @if (!string.IsNullOrWhiteSpace(Model.Search))
+            {
+                <a class="btn btn-outline-secondary" href="@Url.Action("Audit", new { range = Model.SelectedRange, page = 1, pageSize = Model.PageSize })">Clear</a>
+            }
         </div>
-    }
+
+        <div class="audit-toolbar__actions">
+            <select name="range" class="form-select">
+                @foreach (var range in SharePassword.ViewModels.AdminAuditRangeOption.AllValues)
+                {
+                    <option value="@range" selected="@(range == Model.SelectedRange)">@SharePassword.ViewModels.AdminAuditRangeOption.GetLabel(range)</option>
+                }
+            </select>
+            <button type="submit" class="btn btn-outline-primary" formaction="@Url.Action("ExportAuditJson")" formmethod="get">Export JSON</button>
+        </div>
+    </div>
 </form>
 
 <p class="text-muted">Showing @Model.Logs.Count of @Model.TotalCount events (page @Model.Page of @Model.TotalPages).</p>
@@ -63,13 +74,13 @@
 <nav aria-label="Audit paging">
     <ul class="pagination">
         <li class="page-item @(Model.HasPreviousPage ? string.Empty : "disabled")">
-            <a class="page-link" href="@Url.Action("Audit", new { search = Model.Search, page = Model.Page - 1, pageSize = Model.PageSize })">Previous</a>
+            <a class="page-link" href="@Url.Action("Audit", new { search = Model.Search, range = Model.SelectedRange, page = Model.Page - 1, pageSize = Model.PageSize })">Previous</a>
         </li>
         <li class="page-item disabled">
             <span class="page-link">Page @Model.Page of @Model.TotalPages</span>
         </li>
         <li class="page-item @(Model.HasNextPage ? string.Empty : "disabled")">
-            <a class="page-link" href="@Url.Action("Audit", new { search = Model.Search, page = Model.Page + 1, pageSize = Model.PageSize })">Next</a>
+            <a class="page-link" href="@Url.Action("Audit", new { search = Model.Search, range = Model.SelectedRange, page = Model.Page + 1, pageSize = Model.PageSize })">Next</a>
         </li>
     </ul>
 </nav>
