@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Net;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -72,7 +71,7 @@ public class AccountController : Controller
         }
 
         var validUsername = string.Equals(model.Username, _adminAuthOptions.Username, StringComparison.OrdinalIgnoreCase);
-        var validPassword = VerifyPassword(model.Password, _adminAuthOptions);
+        var validPassword = AdminPasswordHash.Verify(model.Password, _adminAuthOptions.PasswordHash);
 
         if (!validUsername || !validPassword)
         {
@@ -179,53 +178,4 @@ public class AccountController : Controller
         return localIp is not null && remoteIp.Equals(localIp);
     }
 
-    private static bool VerifyPassword(string password, AdminAuthOptions options)
-    {
-        if (!string.IsNullOrWhiteSpace(options.PasswordHash))
-        {
-            return VerifyPbkdf2Hash(password, options.PasswordHash);
-        }
-
-        if (string.IsNullOrWhiteSpace(options.Password))
-        {
-            return false;
-        }
-
-        return string.Equals(password, options.Password, StringComparison.Ordinal);
-    }
-
-    private static bool VerifyPbkdf2Hash(string password, string passwordHash)
-    {
-        var parts = passwordHash.Split('$', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 5 || !string.Equals(parts[0], "PBKDF2", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!string.Equals(parts[1], "SHA256", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!int.TryParse(parts[2], out var iterations) || iterations <= 0)
-        {
-            return false;
-        }
-
-        byte[] salt;
-        byte[] expectedHash;
-
-        try
-        {
-            salt = Convert.FromBase64String(parts[3]);
-            expectedHash = Convert.FromBase64String(parts[4]);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        var actualHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expectedHash.Length);
-        return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
-    }
 }

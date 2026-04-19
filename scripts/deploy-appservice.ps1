@@ -28,8 +28,6 @@ param(
 
 	[string]$AzureTableAuditServiceSasUrl,
 
-	[string]$AdminPassword,
-
 	[string]$EncryptionPassphrase,
 
 	[string]$ProjectPath = "./sharepasswordAzure/sharepasswordAzure.csproj",
@@ -140,7 +138,6 @@ if (-not [string]::IsNullOrWhiteSpace($SettingsFile) -and (Test-Path $SettingsFi
 	if (-not $PSBoundParameters.ContainsKey("AzureTableAuditPartitionKey")) { $AzureTableAuditPartitionKey = [string]$settingsJson.AzureStorage.TableAudit.PartitionKey }
 
 	if (-not $PSBoundParameters.ContainsKey("AdminUsername")) { $AdminUsername = [string]$settingsJson.AdminAuth.Username }
-	if (-not $PSBoundParameters.ContainsKey("AdminPassword")) { $AdminPassword = [string]$settingsJson.AdminAuth.Password }
 	if (-not $PSBoundParameters.ContainsKey("AdminPasswordHash")) { $AdminPasswordHash = [string]$settingsJson.AdminAuth.PasswordHash }
 
 	if (-not $PSBoundParameters.ContainsKey("OidcEnabled")) { $OidcEnabled = [bool]$settingsJson.OidcAuth.Enabled }
@@ -198,8 +195,8 @@ else {
 	throw "Unsupported StorageBackend '$StorageBackend'. Supported values are sqlite, sqlserver, postgresql, and azure."
 }
 
-if ([string]::IsNullOrWhiteSpace($AdminPassword) -and [string]::IsNullOrWhiteSpace($AdminPasswordHash)) {
-	throw "Either AdminPassword or AdminPasswordHash is required. Configure one of them under AdminAuth in the settings file or pass it explicitly."
+if ([string]::IsNullOrWhiteSpace($AdminPasswordHash)) {
+	throw "AdminPasswordHash is required. Configure AdminAuth:PasswordHash in the settings file or pass -AdminPasswordHash. Generate one with ./scripts/new-admin-password-hash.ps1."
 }
 
 if ([string]::IsNullOrWhiteSpace($EncryptionPassphrase)) {
@@ -308,7 +305,6 @@ $settings = @(
 	"AzureStorage__TableAudit__TableName=$AzureTableAuditTableName",
 	"AzureStorage__TableAudit__PartitionKey=$AzureTableAuditPartitionKey",
 	"AdminAuth__Username=$AdminUsername",
-	"AdminAuth__Password=$AdminPassword",
 	"AdminAuth__PasswordHash=$AdminPasswordHash",
 	"OidcAuth__Enabled=$oidcEnabledValue",
 	"OidcAuth__Authority=$OidcAuthority",

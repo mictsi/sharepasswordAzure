@@ -79,6 +79,22 @@ select:focus-visible,
   color: inherit;
 }
 
+.app-navbar > .app-navbar-container {
+  gap: 0.75rem;
+}
+
+.app-navbar-collapse {
+  padding-top: 0.75rem;
+}
+
+.app-navbar-menu {
+  gap: 0.25rem;
+}
+
+.app-navbar-actions {
+  margin-top: 0.75rem;
+}
+
 .nav-link {
   color: var(--sp-color-text) !important;
   font-weight: 500;
@@ -103,6 +119,36 @@ main {
 }
 
 @media (min-width: 992px) {
+  .app-navbar > .app-navbar-container {
+    justify-content: center !important;
+    gap: 1rem;
+  }
+
+  .app-navbar .navbar-brand {
+    margin-right: 0;
+  }
+
+  .app-navbar-collapse {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9rem;
+    padding-top: 0;
+  }
+
+  .app-navbar-menu {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    margin: 0;
+    gap: 0.35rem;
+  }
+
+  .app-navbar-actions {
+    margin-top: 0;
+  }
+
   main {
     padding: 1.5rem;
   }

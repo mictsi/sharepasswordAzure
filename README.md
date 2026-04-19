@@ -41,7 +41,7 @@ Generate a PBKDF2-SHA256 admin password hash from the repository root with:
 ./scripts/new-admin-password-hash.ps1
 ```
 
-Paste the output into `AdminAuth:PasswordHash`. If you are switching from a plaintext admin password, remove `AdminAuth:Password` after you add the hash.
+Paste the output into `AdminAuth:PasswordHash`. Cleartext `AdminAuth:Password` is no longer supported.
 
 The full admin authentication configuration is documented in `sharepasswordAzure/README.md`.
 

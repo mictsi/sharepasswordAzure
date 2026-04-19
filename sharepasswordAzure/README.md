@@ -70,8 +70,7 @@ Production hardening guide: `sharepasswordAzure/CONFIGURATION.md`
 - `AzureStorage:KeyVault:*`: Azure Key Vault settings used when `Storage:Backend=azure`.
 - `AzureStorage:TableAudit:*`: Azure Table Storage audit settings used when `Storage:Backend=azure`.
 - `AdminAuth:Username`: local admin username.
-- `AdminAuth:Password`: optional plaintext fallback admin password.
-- `AdminAuth:PasswordHash`: preferred PBKDF2-SHA256 admin password hash. When both are set, `PasswordHash` is used.
+- `AdminAuth:PasswordHash`: required PBKDF2-SHA256 admin password hash.
 - `OidcAuth:Enabled`: enable OIDC as alternative admin login.
 - `OidcAuth:Authority`: OIDC authority/issuer URL.
 - `OidcAuth:ClientId`: OIDC client ID.
@@ -125,7 +124,7 @@ Update your config to use the generated hash:
 }
 ```
 
-If you are migrating from a plaintext admin password, remove `AdminAuth:Password` after you add `AdminAuth:PasswordHash` so the secret is no longer stored in plaintext.
+Cleartext `AdminAuth:Password` is no longer supported. The app fails startup if `AdminAuth:PasswordHash` is missing or invalid.
 
 ### Using Storage Backends
 
@@ -143,7 +142,7 @@ For Azure:
 
 In all cases:
 
-1. Change `AdminAuth:Username`, configure either `AdminAuth:PasswordHash` or `AdminAuth:Password`, and change `Encryption:Passphrase`.
+1. Change `AdminAuth:Username`, configure `AdminAuth:PasswordHash`, and change `Encryption:Passphrase`.
 2. Start the app.
 
 ### OIDC login (alternative to local login)
@@ -173,7 +172,6 @@ Examples:
 - `AzureStorage__TableAudit__ServiceSasUrl=<table-service-sas-url>`
 - `AdminAuth__Username=admin`
 - `AdminAuth__PasswordHash=<pbkdf2-hash>`
-- `AdminAuth__Password=<strong-password>`
 - `Encryption__Passphrase=<long-random-passphrase>`
 - `OidcAuth__Enabled=true`
 - `OidcAuth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0`

@@ -7,15 +7,14 @@ This guide focuses on secure production settings for SharePassword.
 Set strong values before deployment:
 
 - `AdminAuth:Username`: non-default admin name.
-- `AdminAuth:PasswordHash`: preferred PBKDF2-SHA256 admin password hash.
-- `AdminAuth:Password`: optional plaintext fallback only when `AdminAuth:PasswordHash` is not used.
+- `AdminAuth:PasswordHash`: required PBKDF2-SHA256 admin password hash.
 - `Encryption:Passphrase`: long random secret (at least 32 chars).
 
 Recommendations:
 
 - Do not store production secrets in source-controlled `appsettings*.json`.
-- Prefer `AdminAuth:PasswordHash` over `AdminAuth:Password` and generate it with `./scripts/new-admin-password-hash.ps1`.
-- Remove plaintext `AdminAuth:Password` after migrating to `AdminAuth:PasswordHash`.
+- Generate `AdminAuth:PasswordHash` with `./scripts/new-admin-password-hash.ps1`.
+- The app fails startup if `AdminAuth:PasswordHash` is missing or invalid.
 - Prefer environment variables or secret stores.
 - Rotate admin credentials and `Encryption:Passphrase` regularly.
 

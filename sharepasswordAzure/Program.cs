@@ -9,7 +9,16 @@ using SharePassword.Services;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 
-builder.Services.Configure<AdminAuthOptions>(builder.Configuration.GetSection(AdminAuthOptions.SectionName));
+builder.Services
+    .AddOptions<AdminAuthOptions>()
+    .Bind(builder.Configuration.GetSection(AdminAuthOptions.SectionName))
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.PasswordHash),
+        "AdminAuth:PasswordHash is required.")
+    .Validate(
+        options => string.IsNullOrWhiteSpace(options.PasswordHash) || AdminPasswordHash.IsValid(options.PasswordHash),
+        "AdminAuth:PasswordHash must use the format PBKDF2$SHA256$<iterations>$<salt-base64>$<hash-base64>.")
+    .ValidateOnStart();
 builder.Services.Configure<EncryptionOptions>(builder.Configuration.GetSection(EncryptionOptions.SectionName));
 builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareOptions.SectionName));
 builder.Services.Configure<OidcAuthOptions>(builder.Configuration.GetSection(OidcAuthOptions.SectionName));

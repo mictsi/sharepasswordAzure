@@ -31,7 +31,6 @@ ENV ASPNETCORE_URLS=http://+:8080 \
 	AzureStorage__TableAudit__TableName=auditlogs \
 	AzureStorage__TableAudit__PartitionKey=audit \
 	AdminAuth__Username=admin \
-	AdminAuth__Password= \
 	AdminAuth__PasswordHash= \
 	OidcAuth__Enabled=false \
 	OidcAuth__Authority= \

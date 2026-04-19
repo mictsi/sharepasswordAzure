@@ -20,7 +20,7 @@
 <body class="controller-@controllerName action-@actionName">
     <header>
         <nav class="navbar navbar-expand-lg navbar-light app-navbar">
-            <div class="container-fluid">
+            <div class="container-fluid app-navbar-container">
                 <a class="navbar-brand" asp-area="" asp-controller="Admin" asp-action="Index" aria-label="SharePassword home">
                     <img src="~/images/logo.png" alt="SharePassword logo" class="brand-logo" />
                     <span class="brand-text">SharePassword</span>
@@ -29,10 +29,10 @@
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-lg-inline-flex justify-content-between">
+                <div class="navbar-collapse collapse app-navbar-collapse">
                     @if (User.Identity?.IsAuthenticated == true)
                     {
-                        <ul class="navbar-nav flex-grow-1">
+                        <ul class="navbar-nav app-navbar-menu">
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Admin" asp-action="Index">Dashboard</a>
                             </li>
@@ -46,13 +46,13 @@
                                 </li>
                             }
                         </ul>
-                        <form asp-controller="Account" asp-action="Logout" method="post" class="d-flex">
+                        <form asp-controller="Account" asp-action="Logout" method="post" class="d-flex app-navbar-actions">
                             <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>
                         </form>
                     }
                     else
                     {
-                        <ul class="navbar-nav flex-grow-1">
+                        <ul class="navbar-nav app-navbar-menu">
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Account" asp-action="Login">Admin Login</a>
                             </li>

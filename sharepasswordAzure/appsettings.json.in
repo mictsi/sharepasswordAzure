@@ -41,7 +41,6 @@
   },
   "AdminAuth": {
     "Username": "admin",
-    "Password": "ChangeThisAdminPassword!",
     "PasswordHash": ""
   },
   "OidcAuth": {

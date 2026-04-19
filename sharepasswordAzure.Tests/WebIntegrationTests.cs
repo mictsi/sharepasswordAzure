@@ -13,6 +13,22 @@ using SharePassword.Services;
 
 namespace SharePassword.Tests;
 
+internal static class TestAdminAuth
+{
+    public const string Username = "admin";
+    public const string Password = "admin123!ChangeMe";
+    public static string PasswordHash { get; } = CreatePasswordHash(Password);
+
+    private static string CreatePasswordHash(string password, int iterations = 210_000)
+    {
+        byte[] salt = new byte[16];
+        RandomNumberGenerator.Fill(salt);
+
+        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, 32);
+        return $"PBKDF2$SHA256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+}
+
 public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;
@@ -53,8 +69,8 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = antiForgery,
-                ["Username"] = "admin",
-                ["Password"] = "admin123!ChangeMe"
+                ["Username"] = TestAdminAuth.Username,
+                ["Password"] = TestAdminAuth.Password
             })
         };
 
@@ -73,10 +89,7 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     [Fact]
     public async Task AdminLogin_WithPasswordHashOnly_Succeeds()
     {
-        var passwordHash = CreateAdminPasswordHash("admin123!ChangeMe");
-
-        await using var factory = new HashOnlyAdminWebApplicationFactory(passwordHash);
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = true,
@@ -92,8 +105,8 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = antiForgery,
-                ["Username"] = "admin",
-                ["Password"] = "admin123!ChangeMe"
+                ["Username"] = TestAdminAuth.Username,
+                ["Password"] = TestAdminAuth.Password
             })
         };
 
@@ -217,7 +230,7 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = antiForgery,
-                ["Username"] = "admin",
+                ["Username"] = TestAdminAuth.Username,
                 ["Password"] = "wrong-password"
             })
         };
@@ -284,8 +297,8 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = antiForgery,
-                ["Username"] = "admin",
-                ["Password"] = "admin123!ChangeMe"
+                ["Username"] = TestAdminAuth.Username,
+                ["Password"] = TestAdminAuth.Password
             })
         };
 
@@ -400,14 +413,6 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         return match.Groups["id"].Value;
     }
 
-    private static string CreateAdminPasswordHash(string password, int iterations = 210_000)
-    {
-        byte[] salt = new byte[16];
-        RandomNumberGenerator.Fill(salt);
-
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, 32);
-        return $"PBKDF2$SHA256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
-    }
 }
 
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
@@ -421,51 +426,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                 ["Storage:Backend"] = "sqlite",
                 ["SqliteStorage:ConnectionString"] = "Data Source=testwebfactory;Mode=Memory;Cache=Shared",
                 ["SqliteStorage:ApplyMigrationsOnStartup"] = "true",
-                ["AdminAuth:Username"] = "admin",
-                ["AdminAuth:Password"] = "admin123!ChangeMe",
-                ["AdminAuth:PasswordHash"] = string.Empty,
-                ["Encryption:Passphrase"] = "unit-test-passphrase-1234567890",
-                ["Share:CleanupIntervalSeconds"] = "3600"
-            };
-
-            config.AddInMemoryCollection(overrides);
-        });
-
-        builder.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<IShareStore>();
-            services.RemoveAll<IAuditLogSink>();
-            services.RemoveAll<IAuditLogReader>();
-
-            services.AddSingleton<IShareStore, InMemoryShareStore>();
-            services.AddSingleton<InMemoryAuditStore>();
-            services.AddSingleton<IAuditLogSink>(provider => provider.GetRequiredService<InMemoryAuditStore>());
-            services.AddSingleton<IAuditLogReader>(provider => provider.GetRequiredService<InMemoryAuditStore>());
-        });
-    }
-}
-
-internal sealed class HashOnlyAdminWebApplicationFactory : WebApplicationFactory<Program>
-{
-    private readonly string _passwordHash;
-
-    public HashOnlyAdminWebApplicationFactory(string passwordHash)
-    {
-        _passwordHash = passwordHash;
-    }
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.ConfigureAppConfiguration((_, config) =>
-        {
-            var overrides = new Dictionary<string, string?>
-            {
-                ["Storage:Backend"] = "sqlite",
-                ["SqliteStorage:ConnectionString"] = "Data Source=testwebfactory-hash;Mode=Memory;Cache=Shared",
-                ["SqliteStorage:ApplyMigrationsOnStartup"] = "true",
-                ["AdminAuth:Username"] = "admin",
-                ["AdminAuth:Password"] = string.Empty,
-                ["AdminAuth:PasswordHash"] = _passwordHash,
+                ["AdminAuth:Username"] = TestAdminAuth.Username,
+                ["AdminAuth:PasswordHash"] = TestAdminAuth.PasswordHash,
                 ["Encryption:Passphrase"] = "unit-test-passphrase-1234567890",
                 ["Share:CleanupIntervalSeconds"] = "3600"
             };
@@ -502,9 +464,8 @@ internal sealed class SqliteTestWebApplicationFactory : WebApplicationFactory<Pr
                 ["Storage:Backend"] = "sqlite",
                 ["SqliteStorage:ApplyMigrationsOnStartup"] = "true",
                 ["SqliteStorage:ConnectionString"] = $"Data Source={DatabasePath}",
-                ["AdminAuth:Username"] = "admin",
-                ["AdminAuth:Password"] = "admin123!ChangeMe",
-                ["AdminAuth:PasswordHash"] = string.Empty,
+                ["AdminAuth:Username"] = TestAdminAuth.Username,
+                ["AdminAuth:PasswordHash"] = TestAdminAuth.PasswordHash,
                 ["Encryption:Passphrase"] = "unit-test-passphrase-1234567890",
                 ["Share:CleanupIntervalSeconds"] = "3600",
                 ["OidcAuth:Enabled"] = "false"
