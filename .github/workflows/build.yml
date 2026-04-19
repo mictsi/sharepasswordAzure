@@ -6,7 +6,6 @@ on:
       - main
       - master
     tags:
-      - 'v*'
       - '*.*.*'
   pull_request:
 
@@ -41,20 +40,57 @@ jobs:
       - name: Build Docker image
         run: docker build --file Dockerfile --tag sharepasswordazure:ci .
 
-      - name: Publish release output (tags only)
-        if: startsWith(github.ref, 'refs/tags/')
-        run: dotnet publish ./sharepasswordAzure/sharepasswordAzure.csproj --configuration Release --output ./artifacts/release/${{ github.ref_name }}
+  release-artifacts:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-      - name: Zip release output (tags only)
-        if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use number.number.number format. Got: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: |
+            sharepasswordAzure/packages.lock.json
+            sharepasswordAzure.Tests/packages.lock.json
+
+      - name: Restore
+        run: dotnet restore ./sharepasswordAzure.sln
+
+      - name: Publish release output
+        run: dotnet publish ./sharepasswordAzure/sharepasswordAzure.csproj --configuration Release --output ./artifacts/release/${{ github.ref_name }} --no-restore
+
+      - name: Zip release output
         run: |
           cd ./artifacts/release
           zip -r sharepasswordAzure-${{ github.ref_name }}.zip ./${{ github.ref_name }}
 
-      - name: Upload release artifact (tags only)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: sharepasswordAzure-${{ github.ref_name }}
           path: ./artifacts/release/sharepasswordAzure-${{ github.ref_name }}.zip
           if-no-files-found: error
+
+      - name: Create or update GitHub release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: ./artifacts/release/sharepasswordAzure-${{ github.ref_name }}.zip
+          fail_on_unmatched_files: true
+          overwrite_files: true
