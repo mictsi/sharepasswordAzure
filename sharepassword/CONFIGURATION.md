@@ -137,6 +137,13 @@ For the Azure backend, shares are stored in Key Vault and audit logs are stored 
 
 Database-backed platform features such as local user management, editable mail configuration, runtime timezone settings, and persisted KPI counters are only available when `Storage:Backend` is `sqlite`, `sqlserver`, or `postgresql`.
 
+For the database-backed storage modes, the app now retries transient database failures before returning an error. Configure:
+
+- `DatabaseResilience:MaxAttempts`: total database attempts before failing startup checks or a request. Default `3`.
+- `DatabaseResilience:DelayMilliseconds`: wait time between attempts. Default `1000`.
+
+The `/health` endpoint performs a live database connectivity probe for `sqlite`, `sqlserver`, and `postgresql`.
+
 ## 4) Share lifetime and cleanup
 
 Security-related retention:

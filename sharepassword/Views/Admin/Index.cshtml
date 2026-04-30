@@ -20,6 +20,11 @@
     </div>
 </div>
 
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
 <div class="summary-grid">
     <section class="surface-card summary-card">
         <span class="page-eyebrow">Active</span>

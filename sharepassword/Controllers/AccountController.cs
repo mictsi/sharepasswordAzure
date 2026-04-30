@@ -83,7 +83,15 @@ public class AccountController : Controller
         LocalUser? existingLocalUser = null;
         if (_localUserService.IsSupported)
         {
-            existingLocalUser = await _localUserService.GetByUsernameAsync(model.Username);
+            try
+            {
+                existingLocalUser = await _localUserService.GetByUsernameAsync(model.Username);
+            }
+            catch (DatabaseOperationException exception)
+            {
+                ModelState.AddModelError(string.Empty, exception.UserMessage);
+                return View(model);
+            }
         }
 
         if (existingLocalUser is not null)
@@ -92,7 +100,7 @@ public class AccountController : Controller
             if (!localAuthentication.Succeeded || localAuthentication.User is null)
             {
                 await _auditLogger.LogAsync("admin", model.Username, "local-user.login", false, details: localAuthentication.ErrorMessage ?? "Invalid username/password.");
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+                ModelState.AddModelError(string.Empty, localAuthentication.ErrorMessage ?? "Invalid login attempt.");
                 return View(model);
             }
 

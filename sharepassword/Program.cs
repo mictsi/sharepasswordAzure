@@ -40,6 +40,12 @@ builder.Services
         options => string.IsNullOrWhiteSpace(options.PasswordHash) || AdminPasswordHash.IsValid(options.PasswordHash),
         "AdminAuth:PasswordHash must use a supported hash format. Preferred: ARGON2ID$v=19$m=<memory-kib>,t=<iterations>,p=<parallelism>$<salt-base64>$<hash-base64>; fallback: SCRYPT$N=<cost>,r=<block-size>,p=<parallelism>$<salt-base64>$<hash-base64>; legacy PBKDF2 values remain valid.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<DatabaseResilienceOptions>()
+    .Bind(builder.Configuration.GetSection(DatabaseResilienceOptions.SectionName))
+    .Validate(options => options.MaxAttempts > 0, "DatabaseResilience:MaxAttempts must be greater than 0.")
+    .Validate(options => options.DelayMilliseconds >= 0, "DatabaseResilience:DelayMilliseconds must be 0 or greater.")
+    .ValidateOnStart();
 builder.Services.Configure<EncryptionOptions>(builder.Configuration.GetSection(EncryptionOptions.SectionName));
 builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareOptions.SectionName));
 builder.Services.Configure<OidcAuthOptions>(builder.Configuration.GetSection(OidcAuthOptions.SectionName));
@@ -54,9 +60,12 @@ builder.Services
     });
 
 builder.Services.AddControllersWithViews();
-builder.Services.AddHealthChecks();
+builder.Services.AddSingleton<IDatabaseExceptionMapper, DatabaseExceptionMapper>();
+builder.Services.AddSingleton<IDatabaseOperationRunner, DatabaseOperationRunner>();
 builder.Services.AddSingleton<IApplicationTime, ApplicationTime>();
 builder.Services.AddConfiguredStorageBackend(builder.Configuration);
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseConnectivityHealthCheck>("database");
 
 var oidcOptions = builder.Configuration.GetSection(OidcAuthOptions.SectionName).Get<OidcAuthOptions>() ?? new OidcAuthOptions();
 var adminRoleName = string.IsNullOrWhiteSpace(oidcOptions.AdminRoleName) ? "Admin" : oidcOptions.AdminRoleName.Trim();
@@ -321,9 +330,30 @@ builder.Services.AddHostedService<ExpiredShareCleanupService>();
 var app = builder.Build();
 var runtimeApplicationOptions = app.Services.GetRequiredService<IOptions<ApplicationOptions>>().Value;
 var normalizedPathBase = ApplicationOptions.NormalizePathBase(runtimeApplicationOptions.PathBase);
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+var runtimeStorageOptions = app.Services.GetRequiredService<IOptions<StorageOptions>>().Value;
+var runtimeDatabaseResilienceOptions = app.Services.GetRequiredService<IOptions<DatabaseResilienceOptions>>().Value;
+var storageBackend = StorageOptions.NormalizeBackend(runtimeStorageOptions.Backend);
 
-await app.Services.ApplyConfiguredStorageMigrationsAsync();
-await app.Services.GetRequiredService<IPlatformInitializationService>().InitializeAsync();
+startupLogger.LogInformation(
+    "Storage backend {StorageBackend} configured. Database operations will use up to {MaxAttempts} attempts with {DelayMilliseconds} ms delay between attempts.",
+    storageBackend,
+    Math.Max(1, runtimeDatabaseResilienceOptions.MaxAttempts),
+    Math.Max(0, runtimeDatabaseResilienceOptions.DelayMilliseconds));
+
+try
+{
+    await app.Services.ApplyConfiguredStorageMigrationsAsync();
+    startupLogger.LogInformation("Database startup checks completed successfully for backend {StorageBackend}.", storageBackend);
+
+    await app.Services.GetRequiredService<IPlatformInitializationService>().InitializeAsync();
+    startupLogger.LogInformation("Platform initialization completed successfully.");
+}
+catch (DatabaseOperationException exception)
+{
+    startupLogger.LogCritical(exception, "Database startup failed for backend {StorageBackend}. {DiagnosticMessage}", storageBackend, exception.DiagnosticMessage);
+    throw;
+}
 
 if (!app.Environment.IsDevelopment())
 {

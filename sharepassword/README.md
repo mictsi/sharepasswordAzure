@@ -65,6 +65,8 @@ Production hardening guide: `sharepassword/CONFIGURATION.md`
 - `Application:AuthenticationSlidingExpiration`: when `true`, refreshes the session timeout while the user remains active.
 - `Kestrel:Endpoints:Http:Url`: HTTP host+port (example: `http://0.0.0.0:5099`).
 - `Storage:Backend`: selected storage backend (`sqlite`, `sqlserver`, `postgresql`, `azure`).
+- `DatabaseResilience:MaxAttempts`: total database attempts before failing a request or startup check (default `3`).
+- `DatabaseResilience:DelayMilliseconds`: wait time between database retry attempts (default `1000`).
 - `SqliteStorage:ConnectionString`: SQLite connection string.
 - `SqliteStorage:ApplyMigrationsOnStartup`: applies pending EF Core migrations when `Storage:Backend=sqlite`.
 - `SqlServerStorage:ConnectionString`: SQL Server connection string.
@@ -154,6 +156,8 @@ In all cases:
 4. Adjust `Application:AuthenticationSessionTimeoutMinutes` and `Application:AuthenticationSlidingExpiration` if the default 60-minute session policy is not what you want.
 5. Start the app.
 
+The `/health` endpoint now performs a real database connectivity check for the database-backed storage modes.
+
 Timezone examples for `Application:TimeZoneId`:
 
 - Stockholm: `Europe/Stockholm` or `W. Europe Standard Time`
@@ -184,6 +188,8 @@ Examples:
 - `Application__AuthenticationSessionTimeoutMinutes=60`
 - `Application__AuthenticationSlidingExpiration=true`
 - `Storage__Backend=sqlite`
+- `DatabaseResilience__MaxAttempts=3`
+- `DatabaseResilience__DelayMilliseconds=1000`
 - `SqliteStorage__ConnectionString=Data Source=App_Data/sharepassword.db`
 - `SqliteStorage__ApplyMigrationsOnStartup=true`
 - `SqlServerStorage__ConnectionString=Server=tcp:sql.example.com,1433;Database=SharePassword;Encrypt=True;TrustServerCertificate=False;User ID=sharepassword_app;Password=<password>`

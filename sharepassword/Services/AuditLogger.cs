@@ -75,7 +75,20 @@ public class AuditLogger : IAuditLogger
             CorrelationId = sanitizedCorrelationId
         };
 
-        await _auditLogSink.AddAuditAsync(audit, cancellationToken);
+        try
+        {
+            await _auditLogSink.AddAuditAsync(audit, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Audit persistence failed for Operation={Operation}, ActorType={ActorType}, Actor={Actor}, CorrelationId={CorrelationId}.",
+                sanitizedOperation,
+                sanitizedActorType,
+                sanitizedActorIdentifier,
+                sanitizedCorrelationId);
+        }
 
         if (!_consoleAuditLoggingOptions.Enabled)
         {

@@ -9,13 +9,21 @@ namespace SharePassword.Services;
 public sealed class DbLocalUserService : ILocalUserService
 {
     private readonly ISharePasswordDbContextFactory _dbContextFactory;
+    private readonly IDatabaseOperationRunner _databaseOperationRunner;
+    private readonly ILogger<DbLocalUserService> _logger;
     private readonly IReadOnlyList<string> _availableRoles;
     private readonly string _adminRoleName;
     private readonly string _userRoleName;
 
-    public DbLocalUserService(ISharePasswordDbContextFactory dbContextFactory, IOptions<OidcAuthOptions> oidcOptions)
+    public DbLocalUserService(
+        ISharePasswordDbContextFactory dbContextFactory,
+        IOptions<OidcAuthOptions> oidcOptions,
+        IDatabaseOperationRunner databaseOperationRunner,
+        ILogger<DbLocalUserService> logger)
     {
         _dbContextFactory = dbContextFactory;
+        _databaseOperationRunner = databaseOperationRunner;
+        _logger = logger;
 
         var options = oidcOptions.Value;
         _adminRoleName = string.IsNullOrWhiteSpace(options.AdminRoleName) ? "Admin" : options.AdminRoleName.Trim();
@@ -35,42 +43,48 @@ public sealed class DbLocalUserService : ILocalUserService
             return;
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var existing = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
-        var now = DateTime.UtcNow;
-        var roles = SerializeRoles(NormalizeRoles([_adminRoleName, _userRoleName]));
-
-        if (existing is null)
-        {
-            dbContext.LocalUsers.Add(new LocalUser
+        await ExecuteWriteAsync(
+            "ensure built-in admin account",
+            async innerCancellationToken =>
             {
-                Id = Guid.NewGuid(),
-                Username = normalizedUsername,
-                DisplayName = normalizedUsername,
-                Email = string.Empty,
-                PasswordHash = passwordHash.Trim(),
-                Roles = roles,
-                IsDisabled = false,
-                IsSeededAdmin = true,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now,
-                LastPasswordResetAtUtc = now
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return;
-        }
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var existing = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Username == normalizedUsername, innerCancellationToken);
+                var now = DateTime.UtcNow;
+                var roles = SerializeRoles(NormalizeRoles([_adminRoleName, _userRoleName]));
 
-        if (!existing.IsSeededAdmin)
-        {
-            return;
-        }
+                if (existing is null)
+                {
+                    dbContext.LocalUsers.Add(new LocalUser
+                    {
+                        Id = Guid.NewGuid(),
+                        Username = normalizedUsername,
+                        DisplayName = normalizedUsername,
+                        Email = string.Empty,
+                        PasswordHash = passwordHash.Trim(),
+                        Roles = roles,
+                        IsDisabled = false,
+                        IsSeededAdmin = true,
+                        CreatedAtUtc = now,
+                        UpdatedAtUtc = now,
+                        LastPasswordResetAtUtc = now
+                    });
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    return;
+                }
 
-        existing.PasswordHash = passwordHash.Trim();
-        existing.Roles = roles;
-        existing.IsDisabled = false;
-        existing.UpdatedAtUtc = now;
-        existing.LastPasswordResetAtUtc = now;
-        await dbContext.SaveChangesAsync(cancellationToken);
+                if (!existing.IsSeededAdmin)
+                {
+                    return;
+                }
+
+                existing.PasswordHash = passwordHash.Trim();
+                existing.Roles = roles;
+                existing.IsDisabled = false;
+                existing.UpdatedAtUtc = now;
+                existing.LastPasswordResetAtUtc = now;
+                await dbContext.SaveChangesAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task<LocalUserAuthenticationResult> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
@@ -81,54 +95,85 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserAuthenticationResult.Failed("Invalid login attempt.");
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers
-            .SingleOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
-
-        if (user is null || user.IsDisabled)
+        try
         {
-            return LocalUserAuthenticationResult.Failed("Invalid login attempt.");
-        }
+            return await ExecuteWriteAsync(
+                "authenticate local user",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers
+                        .SingleOrDefaultAsync(x => x.Username == normalizedUsername, innerCancellationToken);
 
-        if (!AdminPasswordHash.Verify(password, user.PasswordHash))
+                    if (user is null || user.IsDisabled)
+                    {
+                        return LocalUserAuthenticationResult.Failed("Invalid login attempt.");
+                    }
+
+                    if (!AdminPasswordHash.Verify(password, user.PasswordHash))
+                    {
+                        return LocalUserAuthenticationResult.Failed("Invalid login attempt.");
+                    }
+
+                    if (AdminPasswordHash.NeedsUpgrade(user.PasswordHash))
+                    {
+                        user.PasswordHash = AdminPasswordHash.Create(password);
+                        user.UpdatedAtUtc = DateTime.UtcNow;
+                        await dbContext.SaveChangesAsync(innerCancellationToken);
+                    }
+
+                    return LocalUserAuthenticationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
         {
-            return LocalUserAuthenticationResult.Failed("Invalid login attempt.");
+            return LocalUserAuthenticationResult.Failed(exception.UserMessage);
         }
-
-        if (AdminPasswordHash.NeedsUpgrade(user.PasswordHash))
-        {
-            user.PasswordHash = AdminPasswordHash.Create(password);
-            user.UpdatedAtUtc = DateTime.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        return LocalUserAuthenticationResult.Success(Clone(user));
     }
 
     public async Task<IReadOnlyCollection<LocalUser>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var users = await dbContext.LocalUsers
-            .AsNoTracking()
-            .OrderBy(x => x.Username)
-            .ToListAsync(cancellationToken);
+        return await ExecuteReadAsync(
+            "load local users",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var users = await dbContext.LocalUsers
+                    .AsNoTracking()
+                    .OrderBy(x => x.Username)
+                    .ToListAsync(innerCancellationToken);
 
-        return users.Select(Clone).ToList();
+                return users.Select(Clone).ToList();
+            },
+            cancellationToken);
     }
 
     public async Task<LocalUser?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return user is null ? null : Clone(user);
+        return await ExecuteReadAsync(
+            "load local user by id",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var user = await dbContext.LocalUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                return user is null ? null : Clone(user);
+            },
+            cancellationToken);
     }
 
     public async Task<LocalUser?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default)
     {
         var normalizedUsername = NormalizeUsername(username);
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
-        return user is null ? null : Clone(user);
+        return await ExecuteReadAsync(
+            "load local user by username",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var user = await dbContext.LocalUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Username == normalizedUsername, innerCancellationToken);
+                return user is null ? null : Clone(user);
+            },
+            cancellationToken);
     }
 
     public async Task<LocalUserMutationResult> CreateAsync(LocalUserUpsertRequest request, string actorIdentifier, CancellationToken cancellationToken = default)
@@ -150,32 +195,45 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("At least one built-in role must be selected.");
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var existing = await dbContext.LocalUsers.AnyAsync(x => x.Username == normalizedUsername, cancellationToken);
-        if (existing)
+        try
         {
-            return LocalUserMutationResult.Failed("That username is already in use.");
+            return await ExecuteWriteAsync(
+                "create local user",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var existing = await dbContext.LocalUsers.AnyAsync(x => x.Username == normalizedUsername, innerCancellationToken);
+                    if (existing)
+                    {
+                        return LocalUserMutationResult.Failed("That username is already in use.");
+                    }
+
+                    var now = DateTime.UtcNow;
+                    var user = new LocalUser
+                    {
+                        Id = Guid.NewGuid(),
+                        Username = normalizedUsername,
+                        DisplayName = NormalizeDisplayName(request.DisplayName, normalizedUsername),
+                        Email = NormalizeEmail(request.Email),
+                        PasswordHash = AdminPasswordHash.Create(request.Password),
+                        Roles = SerializeRoles(normalizedRoles),
+                        IsDisabled = request.IsDisabled,
+                        CreatedAtUtc = now,
+                        UpdatedAtUtc = now,
+                        LastPasswordResetAtUtc = now,
+                        IsSeededAdmin = false
+                    };
+
+                    dbContext.LocalUsers.Add(user);
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
         }
-
-        var now = DateTime.UtcNow;
-        var user = new LocalUser
+        catch (DatabaseOperationException exception)
         {
-            Id = Guid.NewGuid(),
-            Username = normalizedUsername,
-            DisplayName = NormalizeDisplayName(request.DisplayName, normalizedUsername),
-            Email = NormalizeEmail(request.Email),
-            PasswordHash = AdminPasswordHash.Create(request.Password),
-            Roles = SerializeRoles(normalizedRoles),
-            IsDisabled = request.IsDisabled,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-            LastPasswordResetAtUtc = now,
-            IsSeededAdmin = false
-        };
-
-        dbContext.LocalUsers.Add(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return LocalUserMutationResult.Success(Clone(user));
+            return LocalUserMutationResult.Failed(exception.UserMessage);
+        }
     }
 
     public async Task<LocalUserMutationResult> UpdateAsync(Guid id, LocalUserUpsertRequest request, string actorIdentifier, CancellationToken cancellationToken = default)
@@ -192,52 +250,78 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("At least one built-in role must be selected.");
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (user is null)
+        try
         {
-            return LocalUserMutationResult.Failed("The selected user could not be found.");
-        }
+            return await ExecuteWriteAsync(
+                "update local user",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
 
-        var duplicate = await dbContext.LocalUsers.AnyAsync(x => x.Id != id && x.Username == normalizedUsername, cancellationToken);
-        if (duplicate)
+                    var duplicate = await dbContext.LocalUsers.AnyAsync(x => x.Id != id && x.Username == normalizedUsername, innerCancellationToken);
+                    if (duplicate)
+                    {
+                        return LocalUserMutationResult.Failed("That username is already in use.");
+                    }
+
+                    if (await WouldRemoveLastEnabledAdminAsync(dbContext, user, normalizedRoles, request.IsDisabled, innerCancellationToken))
+                    {
+                        return LocalUserMutationResult.Failed("At least one enabled administrator must remain available.");
+                    }
+
+                    user.Username = normalizedUsername;
+                    user.DisplayName = NormalizeDisplayName(request.DisplayName, normalizedUsername);
+                    user.Email = NormalizeEmail(request.Email);
+                    user.Roles = SerializeRoles(normalizedRoles);
+                    user.IsDisabled = request.IsDisabled;
+                    user.UpdatedAtUtc = DateTime.UtcNow;
+
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
         {
-            return LocalUserMutationResult.Failed("That username is already in use.");
+            return LocalUserMutationResult.Failed(exception.UserMessage);
         }
-
-        if (await WouldRemoveLastEnabledAdminAsync(dbContext, user, normalizedRoles, request.IsDisabled, cancellationToken))
-        {
-            return LocalUserMutationResult.Failed("At least one enabled administrator must remain available.");
-        }
-
-        user.Username = normalizedUsername;
-        user.DisplayName = NormalizeDisplayName(request.DisplayName, normalizedUsername);
-        user.Email = NormalizeEmail(request.Email);
-        user.Roles = SerializeRoles(normalizedRoles);
-        user.IsDisabled = request.IsDisabled;
-        user.UpdatedAtUtc = DateTime.UtcNow;
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return LocalUserMutationResult.Success(Clone(user));
     }
 
     public async Task<LocalUserMutationResult> DeleteAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (user is null)
+        try
         {
-            return LocalUserMutationResult.Failed("The selected user could not be found.");
-        }
+            return await ExecuteWriteAsync(
+                "delete local user",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
 
-        if (await WouldRemoveLastEnabledAdminAsync(dbContext, user, Array.Empty<string>(), true, cancellationToken))
+                    if (await WouldRemoveLastEnabledAdminAsync(dbContext, user, Array.Empty<string>(), true, innerCancellationToken))
+                    {
+                        return LocalUserMutationResult.Failed("At least one enabled administrator must remain available.");
+                    }
+
+                    dbContext.LocalUsers.Remove(user);
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
         {
-            return LocalUserMutationResult.Failed("At least one enabled administrator must remain available.");
+            return LocalUserMutationResult.Failed(exception.UserMessage);
         }
-
-        dbContext.LocalUsers.Remove(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return LocalUserMutationResult.Success(Clone(user));
     }
 
     public async Task<LocalUserMutationResult> ResetPasswordAsync(Guid id, string newPassword, string actorIdentifier, CancellationToken cancellationToken = default)
@@ -247,19 +331,32 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("A new password is required.");
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (user is null)
+        try
         {
-            return LocalUserMutationResult.Failed("The selected user could not be found.");
+            return await ExecuteWriteAsync(
+                "reset local user password",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
+
+                    user.PasswordHash = AdminPasswordHash.Create(newPassword);
+                    user.LastPasswordResetAtUtc = DateTime.UtcNow;
+                    user.UpdatedAtUtc = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
         }
-
-        user.PasswordHash = AdminPasswordHash.Create(newPassword);
-        user.LastPasswordResetAtUtc = DateTime.UtcNow;
-        user.UpdatedAtUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return LocalUserMutationResult.Success(Clone(user));
+        catch (DatabaseOperationException exception)
+        {
+            return LocalUserMutationResult.Failed(exception.UserMessage);
+        }
     }
 
     public async Task<LocalUserMutationResult> ChangeOwnPasswordAsync(Guid id, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
@@ -269,39 +366,58 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("A new password is required.");
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (user is null)
+        try
         {
-            return LocalUserMutationResult.Failed("The selected user could not be found.");
-        }
+            return await ExecuteWriteAsync(
+                "change local user password",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
 
-        if (!AdminPasswordHash.Verify(currentPassword, user.PasswordHash))
+                    if (!AdminPasswordHash.Verify(currentPassword, user.PasswordHash))
+                    {
+                        return LocalUserMutationResult.Failed("The current password is incorrect.");
+                    }
+
+                    user.PasswordHash = AdminPasswordHash.Create(newPassword);
+                    user.LastPasswordResetAtUtc = DateTime.UtcNow;
+                    user.UpdatedAtUtc = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
         {
-            return LocalUserMutationResult.Failed("The current password is incorrect.");
+            return LocalUserMutationResult.Failed(exception.UserMessage);
         }
-
-        user.PasswordHash = AdminPasswordHash.Create(newPassword);
-        user.LastPasswordResetAtUtc = DateTime.UtcNow;
-        user.UpdatedAtUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return LocalUserMutationResult.Success(Clone(user));
     }
 
     public async Task RecordSuccessfulLoginAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (user is null)
-        {
-            return;
-        }
+        await ExecuteBestEffortWriteAsync(
+            "record local user login statistics",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                if (user is null)
+                {
+                    return;
+                }
 
-        user.LastLoginAtUtc = DateTime.UtcNow;
-        user.TotalSuccessfulLogins += 1;
-        user.UpdatedAtUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
+                user.LastLoginAtUtc = DateTime.UtcNow;
+                user.TotalSuccessfulLogins += 1;
+                user.UpdatedAtUtc = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task RecordShareCreatedAsync(string actorIdentifier, CancellationToken cancellationToken = default)
@@ -312,17 +428,23 @@ public sealed class DbLocalUserService : ILocalUserService
             return;
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Username == normalizedUsername, cancellationToken);
-        if (user is null)
-        {
-            return;
-        }
+        await ExecuteBestEffortWriteAsync(
+            "record local user share statistics",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Username == normalizedUsername, innerCancellationToken);
+                if (user is null)
+                {
+                    return;
+                }
 
-        user.TotalSharesCreated += 1;
-        user.LastShareCreatedAtUtc = DateTime.UtcNow;
-        user.UpdatedAtUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
+                user.TotalSharesCreated += 1;
+                user.LastShareCreatedAtUtc = DateTime.UtcNow;
+                user.UpdatedAtUtc = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task<string?> ResolveEmailAsync(string actorIdentifier, CancellationToken cancellationToken = default)
@@ -338,11 +460,44 @@ public sealed class DbLocalUserService : ILocalUserService
         }
 
         var normalizedUsername = NormalizeUsername(actorIdentifier);
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        return await dbContext.LocalUsers
-            .Where(x => x.Username == normalizedUsername)
-            .Select(x => x.Email)
-            .SingleOrDefaultAsync(cancellationToken);
+        return await ExecuteReadAsync(
+            "resolve local user email",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                return await dbContext.LocalUsers
+                    .Where(x => x.Username == normalizedUsername)
+                    .Select(x => x.Email)
+                    .SingleOrDefaultAsync(innerCancellationToken);
+            },
+            cancellationToken);
+    }
+
+    private Task<T> ExecuteReadAsync<T>(string operationName, Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Read, operation, cancellationToken);
+    }
+
+    private Task ExecuteWriteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Write, operation, cancellationToken);
+    }
+
+    private Task<T> ExecuteWriteAsync<T>(string operationName, Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Write, operation, cancellationToken);
+    }
+
+    private async Task ExecuteBestEffortWriteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExecuteWriteAsync(operationName, operation, cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            _logger.LogWarning(exception, "Best-effort local user database operation {OperationName} failed. {DiagnosticMessage}", operationName, exception.DiagnosticMessage);
+        }
     }
 
     private async Task<bool> WouldRemoveLastEnabledAdminAsync(SharePasswordDbContext dbContext, LocalUser user, IReadOnlyCollection<string> resultingRoles, bool resultingDisabled, CancellationToken cancellationToken)

@@ -2,6 +2,7 @@ namespace SharePassword.ViewModels;
 
 public class AdminDashboardViewModel
 {
+    public string? ErrorMessage { get; set; }
     public string Search { get; set; } = string.Empty;
     public string SelectedStatus { get; set; } = AdminShareStatusOption.All;
     public int ActiveCount { get; set; }

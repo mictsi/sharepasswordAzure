@@ -27,6 +27,11 @@
     </div>
 </div>
 
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
 <form method="get" class="surface-card filter-toolbar">
     <input type="hidden" name="pageSize" value="@Model.PageSize" />
 

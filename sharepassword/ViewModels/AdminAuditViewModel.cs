@@ -4,6 +4,7 @@ namespace SharePassword.ViewModels;
 
 public class AdminAuditViewModel
 {
+    public string? ErrorMessage { get; set; }
     public IReadOnlyCollection<AuditLog> Logs { get; set; } = Array.Empty<AuditLog>();
     public string? Search { get; set; }
     public string? Actor { get; set; }

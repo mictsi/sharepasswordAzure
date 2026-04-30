@@ -61,21 +61,29 @@ public class ConfigurationController : Controller
         }
 
         var actor = GetCurrentUserIdentifier();
-        await _systemConfigurationService.UpdateMailConfigurationAsync(new MailConfigurationUpdateRequest
+        try
         {
-            SmtpHost = model.SmtpHost,
-            SmtpPort = model.SmtpPort,
-            SmtpUsername = model.SmtpUsername,
-            SmtpPassword = model.SmtpPassword,
-            UseTls = model.UseTls,
-            SenderEmail = model.SenderEmail,
-            SenderDisplayName = model.SenderDisplayName,
-            AdminNotificationRecipients = model.AdminNotificationRecipients,
-            NotifyAdminsOnShareAccess = model.NotifyAdminsOnShareAccess,
-            NotifyCreatorOnShareAccess = model.NotifyCreatorOnShareAccess,
-            ShareAccessedSubjectTemplate = model.ShareAccessedSubjectTemplate,
-            ShareAccessedBodyTemplate = model.ShareAccessedBodyTemplate
-        }, actor);
+            await _systemConfigurationService.UpdateMailConfigurationAsync(new MailConfigurationUpdateRequest
+            {
+                SmtpHost = model.SmtpHost,
+                SmtpPort = model.SmtpPort,
+                SmtpUsername = model.SmtpUsername,
+                SmtpPassword = model.SmtpPassword,
+                UseTls = model.UseTls,
+                SenderEmail = model.SenderEmail,
+                SenderDisplayName = model.SenderDisplayName,
+                AdminNotificationRecipients = model.AdminNotificationRecipients,
+                NotifyAdminsOnShareAccess = model.NotifyAdminsOnShareAccess,
+                NotifyCreatorOnShareAccess = model.NotifyCreatorOnShareAccess,
+                ShareAccessedSubjectTemplate = model.ShareAccessedSubjectTemplate,
+                ShareAccessedBodyTemplate = model.ShareAccessedBodyTemplate
+            }, actor);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
 
         await _auditLogger.LogAsync("admin", actor, "mail-configuration.update", true);
         await _usageMetricsService.RecordAsync("mail-configuration.update", "admin", actor, details: "Mail configuration updated.");
@@ -113,6 +121,11 @@ public class ConfigurationController : Controller
         catch (TimeZoneNotFoundException ex)
         {
             ModelState.AddModelError(nameof(model.TimeZoneId), ex.Message);
+            return View(BuildSettingsModel(model.TimeZoneId));
+        }
+        catch (DatabaseOperationException exception)
+        {
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
             return View(BuildSettingsModel(model.TimeZoneId));
         }
 

@@ -56,7 +56,6 @@ public static class DatabaseRegistrationExtensions
                 services.AddDbContextFactory<SqlServerSharePasswordDbContext>(options =>
                     options.UseSqlServer(connectionString, sqlServer =>
                     {
-                        sqlServer.EnableRetryOnFailure();
                         sqlServer.MigrationsAssembly(typeof(SqlServerSharePasswordDbContext).Assembly.FullName);
                     }));
                 services.AddSingleton<ISharePasswordDbContextFactory, SharePasswordDbContextFactory<SqlServerSharePasswordDbContext>>();
@@ -71,7 +70,6 @@ public static class DatabaseRegistrationExtensions
                 services.AddDbContextFactory<PostgresqlSharePasswordDbContext>(options =>
                     options.UseNpgsql(connectionString, npgsql =>
                     {
-                        npgsql.EnableRetryOnFailure();
                         npgsql.MigrationsAssembly(typeof(PostgresqlSharePasswordDbContext).Assembly.FullName);
                     }));
                 services.AddSingleton<ISharePasswordDbContextFactory, SharePasswordDbContextFactory<PostgresqlSharePasswordDbContext>>();
@@ -146,6 +144,7 @@ public static class DatabaseRegistrationExtensions
         using var scope = services.CreateScope();
         var storageOptions = scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
         var backend = StorageOptions.NormalizeBackend(storageOptions.Backend);
+        var databaseOperationRunner = scope.ServiceProvider.GetRequiredService<IDatabaseOperationRunner>();
 
         if (backend == StorageOptions.AzureBackend)
         {
@@ -160,14 +159,41 @@ public static class DatabaseRegistrationExtensions
             _ => false
         };
 
-        if (!applyMigrationsOnStartup)
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<ISharePasswordDbContextFactory>();
+
+        if (applyMigrationsOnStartup)
         {
+            await databaseOperationRunner.ExecuteAsync(
+                "apply startup migrations",
+                DatabaseOperationPurpose.Startup,
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    await dbContext.Database.MigrateAsync(innerCancellationToken);
+                },
+                cancellationToken);
+
             return;
         }
 
-        var dbContextFactory = scope.ServiceProvider.GetRequiredService<ISharePasswordDbContextFactory>();
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        var canConnect = await databaseOperationRunner.ExecuteAsync(
+            "startup connectivity probe",
+            DatabaseOperationPurpose.HealthCheck,
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                return await dbContext.Database.CanConnectAsync(innerCancellationToken);
+            },
+            cancellationToken);
+
+        if (!canConnect)
+        {
+            throw new DatabaseOperationException(
+                "startup connectivity probe",
+                "The application could not connect to the configured database.",
+                "Database connectivity probe returned false.",
+                true);
+        }
     }
 
     private static string ResolveConnectionString(string? connectionString, string sectionName, string backend)

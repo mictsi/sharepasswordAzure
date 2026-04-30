@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
+using SharePassword.Models;
 using System.Security.Claims;
 using SharePassword.Options;
 using SharePassword.Services;
@@ -49,7 +50,18 @@ public class ShareController : Controller
             return BadRequest();
         }
 
-        var share = await _shareStore.GetShareByTokenAsync(token);
+        PasswordShare? share;
+        try
+        {
+            share = await _shareStore.GetShareByTokenAsync(token);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            var unavailableModel = new ShareAccessViewModel { Token = token };
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(unavailableModel);
+        }
+
         var model = new ShareAccessViewModel { Token = token, RequireOidcLogin = share?.RequireOidcLogin ?? false };
 
         if (share?.RequireOidcLogin == true)
@@ -103,7 +115,17 @@ public class ShareController : Controller
             ModelState.AddModelError(nameof(model.Code), AccessCodeFormat.InvalidFormatErrorMessage);
         }
 
-        var share = await _shareStore.GetShareByTokenAsync(model.Token);
+        PasswordShare? share;
+        try
+        {
+            share = await _shareStore.GetShareByTokenAsync(model.Token);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
+
         model.RequireOidcLogin = share?.RequireOidcLogin ?? false;
 
         var email = (model.Email ?? string.Empty).Trim().ToLowerInvariant();
@@ -160,7 +182,15 @@ public class ShareController : Controller
 
         if (share.ExpiresAtUtc <= _applicationTime.UtcNow)
         {
-            await _shareStore.DeleteShareAsync(share.Id);
+            try
+            {
+                await _shareStore.DeleteShareAsync(share.Id);
+            }
+            catch (DatabaseOperationException exception)
+            {
+                ModelState.AddModelError(string.Empty, exception.UserMessage);
+                return View(model);
+            }
 
             await _auditLogger.LogAsync("external-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), "Share expired.");
             ModelState.AddModelError(string.Empty, "This password share has expired.");
@@ -182,7 +212,16 @@ public class ShareController : Controller
         }
 
         share.LastAccessedAtUtc = _applicationTime.UtcNow;
-        await _shareStore.UpsertShareAsync(share);
+        try
+        {
+            await _shareStore.UpsertShareAsync(share);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            await _auditLogger.LogAsync("external-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), exception.DiagnosticMessage);
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
 
         await _auditLogger.LogAsync("external-user", email, "share.access", true, "PasswordShare", share.Id.ToString());
         await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareAccessedKey, "external-user", email, relatedId: share.Id.ToString(), details: "Share accessed.");
@@ -218,18 +257,26 @@ public class ShareController : Controller
         }
 
         var normalizedEmail = (recipientEmail ?? string.Empty).Trim().ToLowerInvariant();
-        var share = await _shareStore.GetShareByIdAsync(shareId);
-
-        if (share is null)
+        try
         {
-            await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", false, details: "Share not found.");
+            var share = await _shareStore.GetShareByIdAsync(shareId);
+
+            if (share is null)
+            {
+                await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", false, details: "Share not found.");
+                return View("Deleted");
+            }
+
+            await _shareStore.DeleteShareAsync(shareId);
+            await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", true, "PasswordShare", shareId.ToString());
+
             return View("Deleted");
         }
-
-        await _shareStore.DeleteShareAsync(shareId);
-        await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", true, "PasswordShare", shareId.ToString());
-
-        return View("Deleted");
+        catch (DatabaseOperationException exception)
+        {
+            await _auditLogger.LogAsync("external-user", normalizedEmail, "share.delete-after-retrieve", false, "PasswordShare", shareId.ToString(), exception.DiagnosticMessage);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, exception.UserMessage);
+        }
     }
 
     private string GetAuthenticatedEmail()

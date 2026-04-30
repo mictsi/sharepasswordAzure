@@ -7,19 +7,28 @@ namespace SharePassword.Services;
 public class DbAuditStore : IAuditLogReader, IAuditLogSink
 {
     private readonly ISharePasswordDbContextFactory _dbContextFactory;
+    private readonly IDatabaseOperationRunner _databaseOperationRunner;
 
-    public DbAuditStore(ISharePasswordDbContextFactory dbContextFactory)
+    public DbAuditStore(ISharePasswordDbContextFactory dbContextFactory, IDatabaseOperationRunner databaseOperationRunner)
     {
         _dbContextFactory = dbContextFactory;
+        _databaseOperationRunner = databaseOperationRunner;
     }
 
     public async Task AddAuditAsync(AuditLog auditLog, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var entity = CloneAudit(auditLog);
 
-        dbContext.AuditLogs.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await ExecuteWriteAsync(
+            "write audit log entry",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+
+                dbContext.AuditLogs.Add(entity);
+                await dbContext.SaveChangesAsync(innerCancellationToken);
+            },
+            cancellationToken);
 
         auditLog.Id = entity.Id;
         auditLog.TimestampUtc = entity.TimestampUtc;
@@ -32,13 +41,25 @@ public class DbAuditStore : IAuditLogReader, IAuditLogSink
             return Array.Empty<AuditLog>();
         }
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await _databaseOperationRunner.ExecuteAsync(
+            "load latest audit log entries",
+            DatabaseOperationPurpose.Read,
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        return await dbContext.AuditLogs
-            .AsNoTracking()
-            .OrderByDescending(x => x.TimestampUtc)
-            .Take(take)
-            .ToListAsync(cancellationToken);
+                return await dbContext.AuditLogs
+                    .AsNoTracking()
+                    .OrderByDescending(x => x.TimestampUtc)
+                    .Take(take)
+                    .ToListAsync(innerCancellationToken);
+            },
+            cancellationToken);
+    }
+
+    private Task ExecuteWriteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Write, operation, cancellationToken);
     }
 
     private static AuditLog CloneAudit(AuditLog auditLog)

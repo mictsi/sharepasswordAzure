@@ -17,6 +17,10 @@
   "Storage": {
     "Backend": "sqlite"
   },
+  "DatabaseResilience": {
+    "MaxAttempts": 3,
+    "DelayMilliseconds": 1000
+  },
   "SqliteStorage": {
     "ConnectionString": "Data Source=App_Data/sharepassword.db",
     "ApplyMigrationsOnStartup": true

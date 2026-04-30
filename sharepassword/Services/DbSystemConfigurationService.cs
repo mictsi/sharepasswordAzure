@@ -9,6 +9,7 @@ namespace SharePassword.Services;
 public sealed class DbSystemConfigurationService : ISystemConfigurationService
 {
     private readonly ISharePasswordDbContextFactory _dbContextFactory;
+    private readonly IDatabaseOperationRunner _databaseOperationRunner;
     private readonly ApplicationOptions _applicationOptions;
     private readonly MailOptions _mailOptions;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -16,10 +17,12 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
 
     public DbSystemConfigurationService(
         ISharePasswordDbContextFactory dbContextFactory,
+        IDatabaseOperationRunner databaseOperationRunner,
         IOptions<ApplicationOptions> applicationOptions,
         IOptions<MailOptions> mailOptions)
     {
         _dbContextFactory = dbContextFactory;
+        _databaseOperationRunner = databaseOperationRunner;
         _applicationOptions = applicationOptions.Value;
         _mailOptions = mailOptions.Value;
         _currentTimeZoneId = NormalizeTimeZoneId(_applicationOptions.TimeZoneId);
@@ -33,46 +36,56 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
 
     public async Task<SystemConfiguration> GetConfigurationAsync(CancellationToken cancellationToken = default)
     {
-        var configuration = await EnsureConfigurationAsync(cancellationToken);
-        return Clone(configuration);
+        return await _databaseOperationRunner.ExecuteAsync(
+            "load system configuration",
+            DatabaseOperationPurpose.Read,
+            EnsureConfigurationAsync,
+            cancellationToken);
     }
 
     public async Task<SystemConfiguration> UpdateMailConfigurationAsync(MailConfigurationUpdateRequest request, string actorIdentifier, CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var configuration = await dbContext.SystemConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
-                ?? CreateDefaultConfiguration();
-
-            configuration.SmtpHost = Trim(request.SmtpHost, 256);
-            configuration.SmtpPort = Math.Clamp(request.SmtpPort, 1, 65535);
-            configuration.SmtpUsername = Trim(request.SmtpUsername, 256);
-            configuration.SmtpPassword = Trim(request.SmtpPassword, 512);
-            configuration.UseTls = request.UseTls;
-            configuration.SenderEmail = Trim(request.SenderEmail, 256);
-            configuration.SenderDisplayName = Trim(request.SenderDisplayName, 256);
-            configuration.AdminNotificationRecipients = Trim(request.AdminNotificationRecipients, 1024);
-            configuration.NotifyAdminsOnShareAccess = request.NotifyAdminsOnShareAccess;
-            configuration.NotifyCreatorOnShareAccess = request.NotifyCreatorOnShareAccess;
-            configuration.ShareAccessedSubjectTemplate = Trim(request.ShareAccessedSubjectTemplate, 512);
-            configuration.ShareAccessedBodyTemplate = Trim(request.ShareAccessedBodyTemplate, 4000);
-            configuration.UpdatedAtUtc = DateTime.UtcNow;
-            configuration.UpdatedBy = Trim(actorIdentifier, 256);
-
-            if (dbContext.Entry(configuration).State == EntityState.Detached)
+        return await _databaseOperationRunner.ExecuteAsync(
+            "update mail configuration",
+            DatabaseOperationPurpose.Write,
+            async innerCancellationToken =>
             {
-                dbContext.SystemConfigurations.Add(configuration);
-            }
+                await _gate.WaitAsync(innerCancellationToken);
+                try
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var configuration = await dbContext.SystemConfigurations.SingleOrDefaultAsync(x => x.Id == 1, innerCancellationToken)
+                        ?? CreateDefaultConfiguration();
 
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return Clone(configuration);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+                    configuration.SmtpHost = Trim(request.SmtpHost, 256);
+                    configuration.SmtpPort = Math.Clamp(request.SmtpPort, 1, 65535);
+                    configuration.SmtpUsername = Trim(request.SmtpUsername, 256);
+                    configuration.SmtpPassword = Trim(request.SmtpPassword, 512);
+                    configuration.UseTls = request.UseTls;
+                    configuration.SenderEmail = Trim(request.SenderEmail, 256);
+                    configuration.SenderDisplayName = Trim(request.SenderDisplayName, 256);
+                    configuration.AdminNotificationRecipients = Trim(request.AdminNotificationRecipients, 1024);
+                    configuration.NotifyAdminsOnShareAccess = request.NotifyAdminsOnShareAccess;
+                    configuration.NotifyCreatorOnShareAccess = request.NotifyCreatorOnShareAccess;
+                    configuration.ShareAccessedSubjectTemplate = Trim(request.ShareAccessedSubjectTemplate, 512);
+                    configuration.ShareAccessedBodyTemplate = Trim(request.ShareAccessedBodyTemplate, 4000);
+                    configuration.UpdatedAtUtc = DateTime.UtcNow;
+                    configuration.UpdatedBy = Trim(actorIdentifier, 256);
+
+                    if (dbContext.Entry(configuration).State == EntityState.Detached)
+                    {
+                        dbContext.SystemConfigurations.Add(configuration);
+                    }
+
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    return Clone(configuration);
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            },
+            cancellationToken);
     }
 
     public async Task<SystemConfiguration> UpdateTimeZoneAsync(string timeZoneId, string actorIdentifier, CancellationToken cancellationToken = default)
@@ -83,30 +96,37 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
             throw new TimeZoneNotFoundException($"Time zone '{normalizedTimeZoneId}' is not available on this host.");
         }
 
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var configuration = await dbContext.SystemConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
-                ?? CreateDefaultConfiguration();
-
-            configuration.TimeZoneId = normalizedTimeZoneId;
-            configuration.UpdatedAtUtc = DateTime.UtcNow;
-            configuration.UpdatedBy = Trim(actorIdentifier, 256);
-
-            if (dbContext.Entry(configuration).State == EntityState.Detached)
+        return await _databaseOperationRunner.ExecuteAsync(
+            "update application time zone",
+            DatabaseOperationPurpose.Write,
+            async innerCancellationToken =>
             {
-                dbContext.SystemConfigurations.Add(configuration);
-            }
+                await _gate.WaitAsync(innerCancellationToken);
+                try
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var configuration = await dbContext.SystemConfigurations.SingleOrDefaultAsync(x => x.Id == 1, innerCancellationToken)
+                        ?? CreateDefaultConfiguration();
 
-            await dbContext.SaveChangesAsync(cancellationToken);
-            _currentTimeZoneId = normalizedTimeZoneId;
-            return Clone(configuration);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+                    configuration.TimeZoneId = normalizedTimeZoneId;
+                    configuration.UpdatedAtUtc = DateTime.UtcNow;
+                    configuration.UpdatedBy = Trim(actorIdentifier, 256);
+
+                    if (dbContext.Entry(configuration).State == EntityState.Detached)
+                    {
+                        dbContext.SystemConfigurations.Add(configuration);
+                    }
+
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    _currentTimeZoneId = normalizedTimeZoneId;
+                    return Clone(configuration);
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            },
+            cancellationToken);
     }
 
     private async Task<SystemConfiguration> EnsureConfigurationAsync(CancellationToken cancellationToken)

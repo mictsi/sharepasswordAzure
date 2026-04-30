@@ -7,77 +7,130 @@ namespace SharePassword.Services;
 public class DbShareStore : IShareStore
 {
     private readonly ISharePasswordDbContextFactory _dbContextFactory;
+    private readonly IDatabaseOperationRunner _databaseOperationRunner;
 
-    public DbShareStore(ISharePasswordDbContextFactory dbContextFactory)
+    public DbShareStore(ISharePasswordDbContextFactory dbContextFactory, IDatabaseOperationRunner databaseOperationRunner)
     {
         _dbContextFactory = dbContextFactory;
+        _databaseOperationRunner = databaseOperationRunner;
     }
 
     public async Task<IReadOnlyCollection<PasswordShare>> GetAllSharesAsync(CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await ExecuteReadAsync(
+            "load password shares",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        return await dbContext.PasswordShares
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
+                return await dbContext.PasswordShares
+                    .AsNoTracking()
+                    .ToListAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task<PasswordShare?> GetShareByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await ExecuteReadAsync(
+            "load password share by id",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        return await dbContext.PasswordShares
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+                return await dbContext.PasswordShares
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task<PasswordShare?> GetShareByTokenAsync(string token, CancellationToken cancellationToken = default)
     {
         var normalizedToken = NormalizeToken(token);
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await ExecuteReadAsync(
+            "load password share by token",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        return await dbContext.PasswordShares
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.AccessToken == normalizedToken, cancellationToken);
+                return await dbContext.PasswordShares
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.AccessToken == normalizedToken, innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task UpsertShareAsync(PasswordShare share, CancellationToken cancellationToken = default)
     {
         var normalizedShare = CloneShare(share);
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await ExecuteWriteAsync(
+            "upsert password share",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        var existing = await dbContext.PasswordShares
-            .SingleOrDefaultAsync(x => x.Id == normalizedShare.Id, cancellationToken);
+                var existing = await dbContext.PasswordShares
+                    .SingleOrDefaultAsync(x => x.Id == normalizedShare.Id, innerCancellationToken);
 
-        if (existing is null)
-        {
-            dbContext.PasswordShares.Add(normalizedShare);
-        }
-        else
-        {
-            CopyShare(normalizedShare, existing);
-        }
+                if (existing is null)
+                {
+                    dbContext.PasswordShares.Add(normalizedShare);
+                }
+                else
+                {
+                    CopyShare(normalizedShare, existing);
+                }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+                await dbContext.SaveChangesAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task DeleteShareAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await ExecuteWriteAsync(
+            "delete password share",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        await dbContext.PasswordShares
-            .Where(x => x.Id == id)
-            .ExecuteDeleteAsync(cancellationToken);
+                await dbContext.PasswordShares
+                    .Where(x => x.Id == id)
+                    .ExecuteDeleteAsync(innerCancellationToken);
+            },
+            cancellationToken);
     }
 
     public async Task<int> DeleteExpiredSharesAsync(DateTime utcNow, CancellationToken cancellationToken = default)
     {
         var normalizedUtcNow = EnsureUtc(utcNow);
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await ExecuteWriteAsync(
+            "delete expired password shares",
+            async innerCancellationToken =>
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
 
-        return await dbContext.PasswordShares
-            .Where(x => x.ExpiresAtUtc <= normalizedUtcNow)
-            .ExecuteDeleteAsync(cancellationToken);
+                return await dbContext.PasswordShares
+                    .Where(x => x.ExpiresAtUtc <= normalizedUtcNow)
+                    .ExecuteDeleteAsync(innerCancellationToken);
+            },
+            cancellationToken);
+    }
+
+    private Task<T> ExecuteReadAsync<T>(string operationName, Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Read, operation, cancellationToken);
+    }
+
+    private Task ExecuteWriteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Write, operation, cancellationToken);
+    }
+
+    private Task<T> ExecuteWriteAsync<T>(string operationName, Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        return _databaseOperationRunner.ExecuteAsync(operationName, DatabaseOperationPurpose.Write, operation, cancellationToken);
     }
 
     private static PasswordShare CloneShare(PasswordShare share)

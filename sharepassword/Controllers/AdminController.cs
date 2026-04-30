@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Security.Claims;
@@ -54,66 +53,79 @@ public class AdminController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(string? search, string? status = null)
     {
-        var shares = await _shareStore.GetAllSharesAsync();
-        var nowUtc = _applicationTime.UtcNow;
-        var currentUser = GetCurrentUserIdentifier();
-        var isAdmin = User.IsInRole(_adminRoleName);
-
-        if (!isAdmin)
-        {
-            shares = shares
-                .Where(x => string.Equals(x.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
-
         var normalizedSearch = NormalizeFilter(search) ?? string.Empty;
         var normalizedStatus = AdminShareStatusOption.Normalize(status);
 
-        var allItems = shares
-            .OrderByDescending(x => x.CreatedAtUtc)
-            .Select(x => new AdminShareListItemViewModel
-            {
-                Id = x.Id,
-                RecipientEmail = x.RecipientEmail,
-                SharedUsername = x.SharedUsername,
-                CreatedBy = x.CreatedBy,
-                CreatedAtUtc = x.CreatedAtUtc,
-                ExpiresAtUtc = x.ExpiresAtUtc,
-                LastAccessedAtUtc = x.LastAccessedAtUtc,
-                IsExpired = x.ExpiresAtUtc <= nowUtc,
-                IsExpiringSoon = x.ExpiresAtUtc > nowUtc && x.ExpiresAtUtc <= nowUtc.AddHours(24),
-                RequireOidcLogin = x.RequireOidcLogin
-            })
-            .ToList();
-
-        var filteredItems = allItems
-            .Where(x => MatchesDashboardSearch(x, normalizedSearch) && MatchesDashboardStatus(x, normalizedStatus))
-            .ToList();
-
-        var auditLogs = await _auditLogReader.GetLatestAsync(5000);
-        var visibleAuditLogs = isAdmin
-            ? auditLogs
-            : auditLogs.Where(x => string.Equals(x.ActorIdentifier, currentUser, StringComparison.OrdinalIgnoreCase)).ToList();
-        var dashboardMetrics = await _usageMetricsService.GetDashboardSnapshotAsync();
-
-        var model = new AdminDashboardViewModel
+        try
         {
-            Search = normalizedSearch,
-            SelectedStatus = normalizedStatus,
-            ActiveCount = allItems.Count(x => !x.IsExpired),
-            ExpiringSoonCount = allItems.Count(x => x.IsExpiringSoon),
-            AccessedCount = allItems.Count(x => x.HasBeenAccessed),
-            RevokedCount = visibleAuditLogs.Count(x => x.Success && string.Equals(x.Operation, "share.revoke", StringComparison.OrdinalIgnoreCase)),
-            TotalVisibleShares = allItems.Count,
-            TotalSharesCreatedKpi = dashboardMetrics.TotalSharesCreated,
-            TotalShareAccessesKpi = dashboardMetrics.TotalShareAccesses,
-            AdminLoginsKpi = dashboardMetrics.AdminLogins,
-            ExpiredSharesDeletedKpi = dashboardMetrics.ExpiredSharesDeleted,
-            ExpiredUnusedSharesDeletedKpi = dashboardMetrics.ExpiredUnusedSharesDeleted,
-            Shares = filteredItems
-        };
+            var shares = await _shareStore.GetAllSharesAsync();
+            var nowUtc = _applicationTime.UtcNow;
+            var currentUser = GetCurrentUserIdentifier();
+            var isAdmin = User.IsInRole(_adminRoleName);
 
-        return View(model);
+            if (!isAdmin)
+            {
+                shares = shares
+                    .Where(x => string.Equals(x.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            var allItems = shares
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .Select(x => new AdminShareListItemViewModel
+                {
+                    Id = x.Id,
+                    RecipientEmail = x.RecipientEmail,
+                    SharedUsername = x.SharedUsername,
+                    CreatedBy = x.CreatedBy,
+                    CreatedAtUtc = x.CreatedAtUtc,
+                    ExpiresAtUtc = x.ExpiresAtUtc,
+                    LastAccessedAtUtc = x.LastAccessedAtUtc,
+                    IsExpired = x.ExpiresAtUtc <= nowUtc,
+                    IsExpiringSoon = x.ExpiresAtUtc > nowUtc && x.ExpiresAtUtc <= nowUtc.AddHours(24),
+                    RequireOidcLogin = x.RequireOidcLogin
+                })
+                .ToList();
+
+            var filteredItems = allItems
+                .Where(x => MatchesDashboardSearch(x, normalizedSearch) && MatchesDashboardStatus(x, normalizedStatus))
+                .ToList();
+
+            var auditLogs = await _auditLogReader.GetLatestAsync(5000);
+            var visibleAuditLogs = isAdmin
+                ? auditLogs
+                : auditLogs.Where(x => string.Equals(x.ActorIdentifier, currentUser, StringComparison.OrdinalIgnoreCase)).ToList();
+            var dashboardMetrics = await _usageMetricsService.GetDashboardSnapshotAsync();
+
+            var model = new AdminDashboardViewModel
+            {
+                ErrorMessage = TempData["ErrorMessage"]?.ToString(),
+                Search = normalizedSearch,
+                SelectedStatus = normalizedStatus,
+                ActiveCount = allItems.Count(x => !x.IsExpired),
+                ExpiringSoonCount = allItems.Count(x => x.IsExpiringSoon),
+                AccessedCount = allItems.Count(x => x.HasBeenAccessed),
+                RevokedCount = visibleAuditLogs.Count(x => x.Success && string.Equals(x.Operation, "share.revoke", StringComparison.OrdinalIgnoreCase)),
+                TotalVisibleShares = allItems.Count,
+                TotalSharesCreatedKpi = dashboardMetrics.TotalSharesCreated,
+                TotalShareAccessesKpi = dashboardMetrics.TotalShareAccesses,
+                AdminLoginsKpi = dashboardMetrics.AdminLogins,
+                ExpiredSharesDeletedKpi = dashboardMetrics.ExpiredSharesDeleted,
+                ExpiredUnusedSharesDeletedKpi = dashboardMetrics.ExpiredUnusedSharesDeleted,
+                Shares = filteredItems
+            };
+
+            return View(model);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            return View(new AdminDashboardViewModel
+            {
+                ErrorMessage = exception.UserMessage,
+                Search = normalizedSearch,
+                SelectedStatus = normalizedStatus
+            });
+        }
     }
 
     [HttpGet]
@@ -166,7 +178,7 @@ public class AdminController : Controller
         {
             await _shareStore.UpsertShareAsync(share);
         }
-        catch (DbUpdateException ex)
+        catch (DatabaseOperationException exception)
         {
             await _auditLogger.LogAsync(
                 actorType,
@@ -175,9 +187,9 @@ public class AdminController : Controller
                 false,
                 targetType: "PasswordShare",
                 targetId: share.Id.ToString(),
-                details: $"Database write failed: {ex.GetBaseException().Message}");
+                details: exception.DiagnosticMessage);
 
-            ModelState.AddModelError(string.Empty, "Share could not be created due to a database error.");
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
             return View(model);
         }
 
@@ -211,24 +223,33 @@ public class AdminController : Controller
     {
         var actorIdentifier = GetCurrentUserIdentifier();
         var actorType = GetCurrentActorType();
-        var share = await _shareStore.GetShareByIdAsync(id);
-        if (share is null)
+        try
         {
-            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "Share not found.");
-            return NotFound();
-        }
+            var share = await _shareStore.GetShareByIdAsync(id);
+            if (share is null)
+            {
+                await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "Share not found.");
+                return NotFound();
+            }
 
-        if (!User.IsInRole(_adminRoleName) && !string.Equals(share.CreatedBy, actorIdentifier, StringComparison.OrdinalIgnoreCase))
+            if (!User.IsInRole(_adminRoleName) && !string.Equals(share.CreatedBy, actorIdentifier, StringComparison.OrdinalIgnoreCase))
+            {
+                await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "User attempted to revoke share they do not own.");
+                return Forbid();
+            }
+
+            await _shareStore.DeleteShareAsync(id);
+
+            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", true, "PasswordShare", id.ToString());
+            await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareRevokedKey, actorType, actorIdentifier, relatedId: id.ToString(), details: "Share revoked.");
+            return RedirectToAction(nameof(Index));
+        }
+        catch (DatabaseOperationException exception)
         {
-            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), "User attempted to revoke share they do not own.");
-            return Forbid();
+            await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", false, "PasswordShare", id.ToString(), exception.DiagnosticMessage);
+            TempData["ErrorMessage"] = exception.UserMessage;
+            return RedirectToAction(nameof(Index));
         }
-
-        await _shareStore.DeleteShareAsync(id);
-
-        await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", true, "PasswordShare", id.ToString());
-        await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareRevokedKey, actorType, actorIdentifier, relatedId: id.ToString(), details: "Share revoked.");
-        return RedirectToAction(nameof(Index));
     }
 
     [HttpGet]
@@ -237,89 +258,113 @@ public class AdminController : Controller
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 200);
-
-        var logs = await _auditLogReader.GetLatestAsync(5000);
         var normalizedRange = AdminAuditRangeOption.Normalize(range);
         var normalizedSearch = NormalizeFilter(search);
         var normalizedActor = NormalizeFilter(actor);
         var normalizedOperation = NormalizeOperation(operation);
         var normalizedSuccess = AdminAuditSuccessOption.Normalize(success);
-        var filteredByRange = ApplyAuditRange(logs, normalizedRange);
-        var availableOperations = filteredByRange
-            .Select(x => x.Operation)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var filtered = ApplyAuditFilters(filteredByRange, normalizedSearch, normalizedActor, normalizedOperation, normalizedSuccess);
 
-        var totalCount = filtered.Count;
-        var totalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize);
-        if (page > totalPages)
+        try
         {
-            page = totalPages;
+            var logs = await _auditLogReader.GetLatestAsync(5000);
+            var filteredByRange = ApplyAuditRange(logs, normalizedRange);
+            var availableOperations = filteredByRange
+                .Select(x => x.Operation)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var filtered = ApplyAuditFilters(filteredByRange, normalizedSearch, normalizedActor, normalizedOperation, normalizedSuccess);
+
+            var totalCount = filtered.Count;
+            var totalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize);
+            if (page > totalPages)
+            {
+                page = totalPages;
+            }
+
+            var pagedLogs = filtered
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            var model = new AdminAuditViewModel
+            {
+                Logs = pagedLogs,
+                ExportLogs = filtered.OrderByDescending(x => x.TimestampUtc).ToList(),
+                Search = normalizedSearch,
+                Actor = normalizedActor,
+                SelectedRange = normalizedRange,
+                SelectedOperation = normalizedOperation,
+                SelectedSuccess = normalizedSuccess,
+                AvailableOperations = availableOperations,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+
+            return View(model);
         }
-
-        var pagedLogs = filtered
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        var model = new AdminAuditViewModel
+        catch (DatabaseOperationException exception)
         {
-            Logs = pagedLogs,
-            ExportLogs = filtered.OrderByDescending(x => x.TimestampUtc).ToList(),
-            Search = normalizedSearch,
-            Actor = normalizedActor,
-            SelectedRange = normalizedRange,
-            SelectedOperation = normalizedOperation,
-            SelectedSuccess = normalizedSuccess,
-            AvailableOperations = availableOperations,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
-
-        return View(model);
+            return View(new AdminAuditViewModel
+            {
+                ErrorMessage = exception.UserMessage,
+                Search = normalizedSearch,
+                Actor = normalizedActor,
+                SelectedRange = normalizedRange,
+                SelectedOperation = normalizedOperation,
+                SelectedSuccess = normalizedSuccess,
+                Page = page,
+                PageSize = pageSize
+            });
+        }
     }
 
     [HttpGet]
     [Authorize(Policy = "AuditAccess")]
     public async Task<IActionResult> ExportAuditJson(string? search, string? actor, string? operation, string? success, string? range = null)
     {
-        var logs = await _auditLogReader.GetLatestAsync(5000);
-        var normalizedRange = AdminAuditRangeOption.Normalize(range);
-        var filteredByRange = ApplyAuditRange(logs, normalizedRange);
-        var normalizedSearch = NormalizeFilter(search);
-        var normalizedActor = NormalizeFilter(actor);
-        var normalizedOperation = NormalizeOperation(operation);
-        var normalizedSuccess = AdminAuditSuccessOption.Normalize(success);
-        var filtered = ApplyAuditFilters(filteredByRange, normalizedSearch, normalizedActor, normalizedOperation, normalizedSuccess);
+        try
+        {
+            var logs = await _auditLogReader.GetLatestAsync(5000);
+            var normalizedRange = AdminAuditRangeOption.Normalize(range);
+            var filteredByRange = ApplyAuditRange(logs, normalizedRange);
+            var normalizedSearch = NormalizeFilter(search);
+            var normalizedActor = NormalizeFilter(actor);
+            var normalizedOperation = NormalizeOperation(operation);
+            var normalizedSuccess = AdminAuditSuccessOption.Normalize(success);
+            var filtered = ApplyAuditFilters(filteredByRange, normalizedSearch, normalizedActor, normalizedOperation, normalizedSuccess);
 
-        var payload = filtered
-            .OrderByDescending(x => x.TimestampUtc)
-            .Select(log => new
-            {
-                log.Id,
-                log.TimestampUtc,
-                Timestamp = _applicationTime.FormatUtcForDisplay(log.TimestampUtc),
-                TimeZone = _applicationTime.TimeZoneId,
-                log.ActorType,
-                log.ActorIdentifier,
-                log.Operation,
-                log.Success,
-                log.TargetType,
-                log.TargetId,
-                log.IpAddress,
-                log.UserAgent,
-                log.CorrelationId,
-                log.Details
-            })
-            .ToList();
+            var payload = filtered
+                .OrderByDescending(x => x.TimestampUtc)
+                .Select(log => new
+                {
+                    log.Id,
+                    log.TimestampUtc,
+                    Timestamp = _applicationTime.FormatUtcForDisplay(log.TimestampUtc),
+                    TimeZone = _applicationTime.TimeZoneId,
+                    log.ActorType,
+                    log.ActorIdentifier,
+                    log.Operation,
+                    log.Success,
+                    log.TargetType,
+                    log.TargetId,
+                    log.IpAddress,
+                    log.UserAgent,
+                    log.CorrelationId,
+                    log.Details
+                })
+                .ToList();
 
-        var fileName = $"audit-logs-{normalizedRange}-{_applicationTime.UtcNow:yyyyMMddHHmmss}.json";
-        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
-        return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", fileName);
+            var fileName = $"audit-logs-{normalizedRange}-{_applicationTime.UtcNow:yyyyMMddHHmmss}.json";
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+            return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", fileName);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, exception.UserMessage);
+        }
     }
 
     private static bool Contains(string? source, string value)
