@@ -1,0 +1,68 @@
+@model SharePassword.ViewModels.LocalUserEditorViewModel
+@{
+    ViewData["Title"] = "Create User";
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Administration</div>
+        <h1 class="page-title">Create local user</h1>
+        <p class="page-subtitle">Add a named local account and assign the built-in roles it should receive at sign-in.</p>
+    </div>
+    <div class="page-header__actions">
+        <a class="btn btn-outline-secondary" asp-action="Index">Back to users</a>
+    </div>
+</div>
+
+<form method="post" class="surface-card form-section">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="form-grid">
+        <div class="field-grid">
+            <div>
+                <label asp-for="Username" class="form-label"></label>
+                <input asp-for="Username" class="form-control" autocomplete="username" />
+            </div>
+            <div>
+                <label asp-for="DisplayName" class="form-label"></label>
+                <input asp-for="DisplayName" class="form-control" />
+            </div>
+            <div>
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" autocomplete="email" />
+            </div>
+        </div>
+
+        <div class="field-grid">
+            <div>
+                <span class="form-label d-block">Roles</span>
+                <div class="checkbox-grid">
+                    @foreach (var role in Model.AvailableRoles)
+                    {
+                        <label class="toggle-card">
+                            <input class="form-check-input" type="checkbox" name="SelectedRoles" value="@role" checked="@(Model.SelectedRoles.Contains(role, StringComparer.OrdinalIgnoreCase))" />
+                            <span>@role</span>
+                        </label>
+                    }
+                </div>
+            </div>
+            <div>
+                <label asp-for="NewPassword" class="form-label"></label>
+                <input asp-for="NewPassword" class="form-control" type="password" autocomplete="new-password" />
+            </div>
+            <div>
+                <label asp-for="ConfirmPassword" class="form-label"></label>
+                <input asp-for="ConfirmPassword" class="form-control" type="password" autocomplete="new-password" />
+            </div>
+            <label class="toggle-card">
+                <input asp-for="IsDisabled" class="form-check-input" />
+                <span>Create the account in a disabled state</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="action-row">
+        <button type="submit" class="btn btn-primary">Create user</button>
+        <a class="btn btn-outline-secondary" asp-action="Index">Cancel</a>
+    </div>
+</form>

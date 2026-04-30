@@ -70,6 +70,20 @@
     "DefaultExpiryHours": 4,
     "CleanupIntervalSeconds": 60
   },
+  "Mail": {
+    "SmtpHost": "",
+    "Port": 587,
+    "Username": "",
+    "Password": "",
+    "UseTls": true,
+    "SenderEmail": "",
+    "SenderDisplayName": "SharePassword",
+    "AdminNotificationRecipients": "",
+    "NotifyAdminsOnShareAccess": true,
+    "NotifyCreatorOnShareAccess": true,
+    "ShareAccessedSubjectTemplate": "Share used: {{SharedUsername}} for {{RecipientEmail}}",
+    "ShareAccessedBodyTemplate": "A secure share has been used.\n\nShare ID: {{ShareId}}\nCreated by: {{CreatedBy}}\nRecipient: {{RecipientEmail}}\nShared username: {{SharedUsername}}\nAccessed by: {{AccessedBy}}\nAccessed at: {{AccessedAt}}\nExpires at: {{ExpiresAt}}\nTime zone: {{TimeZoneId}}"
+  },
   "ConsoleAuditLogging": {
     "Enabled": false,
     "Level": "INFO"

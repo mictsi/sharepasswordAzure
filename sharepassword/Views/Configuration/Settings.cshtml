@@ -1,0 +1,47 @@
+@model SharePassword.ViewModels.ApplicationSettingsViewModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Administration</div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Update runtime application settings that affect the admin UI and timestamp formatting.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.IsSupported)
+{
+    <section class="surface-card empty-state">
+        <h2 class="empty-state__title">Editable settings are unavailable</h2>
+        <p class="empty-state__text">This feature is only available when the app runs on a database-backed storage backend.</p>
+    </section>
+}
+else
+{
+    <form method="post" class="surface-card form-section">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="field-grid">
+            <div>
+                <label asp-for="TimeZoneId" class="form-label">Timezone</label>
+                <select asp-for="TimeZoneId" class="form-select">
+                    @foreach (var option in Model.AvailableTimeZones)
+                    {
+                        <option value="@option.Id" selected="@(string.Equals(option.Id, Model.TimeZoneId, StringComparison.OrdinalIgnoreCase))">@option.DisplayName</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button type="submit" class="btn btn-primary">Save settings</button>
+        </div>
+    </form>
+}

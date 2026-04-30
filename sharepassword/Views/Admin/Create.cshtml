@@ -61,7 +61,6 @@
                 <label asp-for="Password" class="form-label"></label>
                 <textarea asp-for="Password" class="form-control" rows="5" maxlength="1000" id="secretText"></textarea>
                 <div class="field-actions mt-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="generateSecretButton">Generate password</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSecretButton">Clear</button>
                 </div>
                 <div class="form-text mt-2" id="secretTextCounter">0 / 1000 characters (1000 left)</div>
@@ -135,7 +134,6 @@
             const expiryHours = document.getElementById("ExpiryHours");
             const presetInputs = Array.from(document.querySelectorAll('input[name="expiryPreset"]'));
             const secretInput = document.getElementById("secretText");
-            const generateButton = document.getElementById("generateSecretButton");
             const clearButton = document.getElementById("clearSecretButton");
 
             function wireCounter(inputId, counterId, warningId) {
@@ -174,28 +172,10 @@
                 expiryHours.value = selected.value;
             }
 
-            function generateSecret(length) {
-                const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@@$%*-_#";
-                const randomValues = new Uint32Array(length);
-                window.crypto.getRandomValues(randomValues);
-
-                return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join("");
-            }
-
             wireCounter("secretText", "secretTextCounter", "secretTextWarning");
             wireCounter("instructionsText", "instructionsTextCounter", "instructionsTextWarning");
 
             presetInputs.forEach((input) => input.addEventListener("change", syncExpiryValue));
-
-            generateButton?.addEventListener("click", function () {
-                if (!secretInput) {
-                    return;
-                }
-
-                secretInput.value = generateSecret(20);
-                secretInput.dispatchEvent(new Event("input", { bubbles: true }));
-                secretInput.focus();
-            });
 
             clearButton?.addEventListener("click", function () {
                 if (!secretInput) {

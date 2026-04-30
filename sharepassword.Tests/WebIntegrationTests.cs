@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
@@ -20,16 +19,7 @@ internal static class TestAdminAuth
 {
     public const string Username = "admin";
     public const string Password = "admin123!ChangeMe";
-    public static string PasswordHash { get; } = CreatePasswordHash(Password);
-
-    private static string CreatePasswordHash(string password, int iterations = 210_000)
-    {
-        byte[] salt = new byte[16];
-        RandomNumberGenerator.Fill(salt);
-
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, 32);
-        return $"PBKDF2$SHA256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
-    }
+    public static string PasswordHash { get; } = AdminPasswordHash.Create(Password);
 }
 
 public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
@@ -330,7 +320,7 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         await LoginAsAdminAsync(client);
         var auditHtml = await client.GetStringAsync("/admin/audit");
         Assert.Contains("admin.login", auditHtml, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Invalid username/password.", auditHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Invalid login attempt.", auditHtml, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -541,13 +531,18 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
 
     private static string ExtractAccessCode(string html)
     {
-        var match = Regex.Match(html, "<dd class=\"col-sm-9\"><strong>(?<code>[A-Za-z0-9#-]+)</strong></dd>");
+        var match = Regex.Match(html, "id=\"createdAccessCode\"[^>]*value=\"(?<code>[^\"]+)\"", RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            match = Regex.Match(html, "<dd class=\"col-sm-9\"><strong>(?<code>[A-Za-z0-9#-]+)</strong></dd>", RegexOptions.IgnoreCase);
+        }
+
         if (!match.Success)
         {
             throw new InvalidOperationException("Access code not found in created page.");
         }
 
-        return match.Groups["code"].Value;
+        return WebUtility.HtmlDecode(match.Groups["code"].Value);
     }
 
     private static string ExtractTokenFromAccessPage(string html)
@@ -591,14 +586,31 @@ public class ApplicationTimeTests
     [Fact]
     public void FormatUtcForDisplay_UsesConfiguredTimeZone()
     {
-        var service = new ApplicationTime(Microsoft.Extensions.Options.Options.Create(new SharePassword.Options.ApplicationOptions
-        {
-            TimeZoneId = "Europe/Stockholm"
-        }));
+        var service = new ApplicationTime(new TestTimeZoneSettingsProvider("Europe/Stockholm"));
 
         var formatted = service.FormatUtcForDisplay(new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc));
 
         Assert.Equal("2026-04-19 14:00:00 +02:00", formatted);
+    }
+
+    private sealed class TestTimeZoneSettingsProvider : ITimeZoneSettingsProvider
+    {
+        private readonly TimeZoneInfo _timeZone;
+
+        public TestTimeZoneSettingsProvider(string timeZoneId)
+        {
+            _timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+
+        public string GetCurrentTimeZoneId()
+        {
+            return _timeZone.Id;
+        }
+
+        public TimeZoneInfo GetCurrentTimeZone()
+        {
+            return _timeZone;
+        }
     }
 }
 

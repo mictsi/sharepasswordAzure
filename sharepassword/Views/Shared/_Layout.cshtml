@@ -1,15 +1,20 @@
 ﻿@using Microsoft.Extensions.Options
 @using SharePassword.Options
+@using SharePassword.Services
 @using System.Security.Claims
 @inject IOptions<OidcAuthOptions> OidcAuthOptions
 @{
     var adminRoleName = string.IsNullOrWhiteSpace(OidcAuthOptions.Value.AdminRoleName) ? "Admin" : OidcAuthOptions.Value.AdminRoleName.Trim();
+    var userRoleName = string.IsNullOrWhiteSpace(OidcAuthOptions.Value.UserRoleName) ? "User" : OidcAuthOptions.Value.UserRoleName.Trim();
     var controllerName = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "home").ToLowerInvariant();
     var actionName = (ViewContext.RouteData.Values["action"]?.ToString() ?? "index").ToLowerInvariant();
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var isSharePage = controllerName == "share";
     var isLoginPage = controllerName == "account" && actionName == "login";
     var isAdminShell = isAuthenticated && !isSharePage;
+    var canManageShares = User.IsInRole(adminRoleName) || User.IsInRole(userRoleName);
+    var canManageAdministration = User.IsInRole(adminRoleName);
+    var canAccessAudit = User.IsInRole(adminRoleName) || User.IsInRole(BuiltInRoleNames.Auditor);
     var shellMode = isAdminShell ? "admin" : isLoginPage ? "auth" : "public";
     var widthClass = isAdminShell ? "app-width--admin" : isLoginPage ? "app-width--auth" : "app-width--public";
     var userDisplayName = User.FindFirstValue("preferred_username")
@@ -50,7 +55,7 @@
                 }
                 else
                 {
-                    <a class="app-brand" asp-area="" asp-controller="@(isAdminShell ? "Admin" : "Account")" asp-action="@(isAdminShell ? "Index" : "Login")" aria-label="SharePassword home">
+                    <a class="app-brand" asp-area="" asp-controller="Account" asp-action="@(isAdminShell ? "PostLogin" : "Login")" aria-label="SharePassword home">
                         <img src="~/images/logo.png" alt="SharePassword logo" class="app-brand__logo" />
                         <span>
                             <span class="app-brand__name">SharePassword</span>
@@ -78,9 +83,30 @@
                             <span class="app-adminmenu__user">@userDisplayName</span>
                         </div>
 
-                        <a class="dropdown-item app-adminmenu__item @(IsCurrent("Admin", "Index") ? "active" : null)" asp-controller="Admin" asp-action="Index" aria-current="@(IsCurrent("Admin", "Index") ? "page" : null)">Dashboard</a>
-                        <a class="dropdown-item app-adminmenu__item @(IsCurrent("Admin", "Create") ? "active" : null)" asp-controller="Admin" asp-action="Create" aria-current="@(IsCurrent("Admin", "Create") ? "page" : null)">Create secure share</a>
-                        @if (User.IsInRole(adminRoleName))
+                        @if (canManageShares)
+                        {
+                            <div class="app-adminmenu__section-label">Workspace</div>
+                            <a class="dropdown-item app-adminmenu__item @(IsCurrent("Admin", "Index") ? "active" : null)" asp-controller="Admin" asp-action="Index" aria-current="@(IsCurrent("Admin", "Index") ? "page" : null)">Dashboard</a>
+                            <a class="dropdown-item app-adminmenu__item @(IsCurrent("Admin", "Create") ? "active" : null)" asp-controller="Admin" asp-action="Create" aria-current="@(IsCurrent("Admin", "Create") ? "page" : null)">Create secure share</a>
+                        }
+
+                        <div class="app-adminmenu__section-label">Account</div>
+                        <a class="dropdown-item app-adminmenu__item @(IsCurrent("Account", "Profile") ? "active" : null)" asp-controller="Account" asp-action="Profile" aria-current="@(IsCurrent("Account", "Profile") ? "page" : null)">My profile</a>
+
+                        @if (canManageAdministration || canAccessAudit)
+                        {
+                            <div class="dropdown-divider app-adminmenu__divider"></div>
+                            <div class="app-adminmenu__section-label">Administration</div>
+                        }
+
+                        @if (canManageAdministration)
+                        {
+                            <a class="dropdown-item app-adminmenu__item @(IsCurrent("Users", "Index") || IsCurrent("Users", "Create") || IsCurrent("Users", "Edit") ? "active" : null)" asp-controller="Users" asp-action="Index">Users</a>
+                            <a class="dropdown-item app-adminmenu__item @(IsCurrent("Configuration", "Mail") ? "active" : null)" asp-controller="Configuration" asp-action="Mail">Mail configuration</a>
+                            <a class="dropdown-item app-adminmenu__item @(IsCurrent("Configuration", "Settings") ? "active" : null)" asp-controller="Configuration" asp-action="Settings">Settings</a>
+                        }
+
+                        @if (canAccessAudit)
                         {
                             <a class="dropdown-item app-adminmenu__item @(IsCurrent("Admin", "Audit") ? "active" : null)" asp-controller="Admin" asp-action="Audit" aria-current="@(IsCurrent("Admin", "Audit") ? "page" : null)">Audit logs</a>
                         }

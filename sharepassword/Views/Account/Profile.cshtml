@@ -1,0 +1,103 @@
+@model SharePassword.ViewModels.ProfileViewModel
+@{
+    ViewData["Title"] = "My Profile";
+
+    string FormatStamp(DateTime? value)
+    {
+        return value.HasValue
+            ? $"{ApplicationTime.ConvertUtcToApplicationTime(value.Value):MMM dd, yyyy HH:mm} {ApplicationTime.TimeZoneId}"
+            : "Not available";
+    }
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Account</div>
+        <h1 class="page-title">My profile</h1>
+        <p class="page-subtitle">Review the current account details and change the password when the account is managed locally.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<section class="surface-card form-section">
+    <div class="form-section__header">
+        <h2 class="surface-card__title">Account details</h2>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-tile">
+            <span class="stat-tile__label">Username</span>
+            <span class="stat-tile__value">@Model.Username</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Display name</span>
+            <span class="stat-tile__value">@Model.DisplayName</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Email</span>
+            <span class="stat-tile__value">@(string.IsNullOrWhiteSpace(Model.Email) ? "Not configured" : Model.Email)</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Roles</span>
+            <span class="stat-tile__value">@(Model.Roles.Count == 0 ? "None" : string.Join(", ", Model.Roles))</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Last login</span>
+            <span class="stat-tile__value">@FormatStamp(Model.LastLoginAtUtc)</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Last share</span>
+            <span class="stat-tile__value">@FormatStamp(Model.LastShareCreatedAtUtc)</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Successful logins</span>
+            <span class="stat-tile__value">@Model.TotalSuccessfulLogins</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Shares created</span>
+            <span class="stat-tile__value">@Model.TotalSharesCreated</span>
+        </div>
+    </div>
+</section>
+
+@if (!Model.IsLocalAccount)
+{
+    <section class="surface-card empty-state">
+        <h2 class="empty-state__title">Password updates are handled externally</h2>
+        <p class="empty-state__text">This account is not backed by the local user store, so password changes need to happen in the external identity system or in configuration.</p>
+    </section>
+}
+else
+{
+    <form method="post" class="surface-card form-section">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="form-section__header">
+            <h2 class="surface-card__title">Change password</h2>
+            <p class="surface-card__subtitle mb-0">Set a new password for this local account.</p>
+        </div>
+
+        <div class="form-grid">
+            <div>
+                <label asp-for="CurrentPassword" class="form-label"></label>
+                <input asp-for="CurrentPassword" class="form-control" type="password" autocomplete="current-password" />
+            </div>
+            <div>
+                <label asp-for="NewPassword" class="form-label"></label>
+                <input asp-for="NewPassword" class="form-control" type="password" autocomplete="new-password" />
+            </div>
+            <div>
+                <label asp-for="ConfirmPassword" class="form-label"></label>
+                <input asp-for="ConfirmPassword" class="form-control" type="password" autocomplete="new-password" />
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button type="submit" class="btn btn-primary">Update password</button>
+        </div>
+    </form>
+}

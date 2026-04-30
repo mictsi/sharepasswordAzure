@@ -43,12 +43,35 @@
     </section>
 </div>
 
+<div class="summary-grid summary-grid--compact">
+    <section class="surface-card summary-card summary-card--compact">
+        <span class="page-eyebrow">Total shares</span>
+        <span class="summary-card__value">@Model.TotalSharesCreatedKpi</span>
+        <span class="summary-card__meta">All shares created since telemetry started.</span>
+    </section>
+    <section class="surface-card summary-card summary-card--compact">
+        <span class="page-eyebrow">Share opens</span>
+        <span class="summary-card__value">@Model.TotalShareAccessesKpi</span>
+        <span class="summary-card__meta">Successful share retrieval events.</span>
+    </section>
+    <section class="surface-card summary-card summary-card--compact">
+        <span class="page-eyebrow">Admin sign-ins</span>
+        <span class="summary-card__value">@Model.AdminLoginsKpi</span>
+        <span class="summary-card__meta">Local and OIDC admin logins.</span>
+    </section>
+    <section class="surface-card summary-card summary-card--compact">
+        <span class="page-eyebrow">Expired unused</span>
+        <span class="summary-card__value">@Model.ExpiredUnusedSharesDeletedKpi</span>
+        <span class="summary-card__meta">Expired shares removed before anyone opened them.</span>
+    </section>
+</div>
+
 <section class="surface-card">
     <form method="get" class="filter-toolbar">
         <div class="filter-toolbar__grid">
             <div class="filter-toolbar__field">
                 <label for="dashboardSearch">Search</label>
-                <input id="dashboardSearch" type="text" name="search" value="@Model.Search" class="form-control" placeholder="Search recipient or username" />
+                <input id="dashboardSearch" type="text" name="search" value="@Model.Search" class="form-control" placeholder="Search recipient, username, or creator" />
             </div>
             <div class="filter-toolbar__field">
                 <label for="dashboardStatus">Status</label>
@@ -121,6 +144,7 @@ else
                             </td>
                             <td>
                                 <div class="cell-primary">@item.SharedUsername</div>
+                                <div class="cell-meta">Created by @item.CreatedBy</div>
                                 @if (item.HasBeenAccessed && item.LastAccessedAtUtc.HasValue)
                                 {
                                     <div class="cell-meta">Opened @FormatStamp(item.LastAccessedAtUtc.Value)</div>
@@ -159,6 +183,7 @@ else
                             <div>
                                 <div class="cell-primary">@item.RecipientEmail</div>
                                 <div class="cell-meta">@item.SharedUsername</div>
+                                <div class="cell-meta">Created by @item.CreatedBy</div>
                             </div>
                             <span class="status-badge status-badge--@item.StatusTone">@item.StatusLabel</span>
                         </div>

@@ -5,6 +5,7 @@ using Azure.Security.KeyVault.Secrets;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharePassword.Options;
 using SharePassword.Services;
 
@@ -20,6 +21,15 @@ public static class DatabaseRegistrationExtensions
         services.Configure<PostgresqlStorageOptions>(configuration.GetSection(PostgresqlStorageOptions.SectionName));
         services.Configure<AzureKeyVaultOptions>(configuration.GetSection(AzureKeyVaultOptions.SectionName));
         services.Configure<AzureTableAuditOptions>(configuration.GetSection(AzureTableAuditOptions.SectionName));
+        services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
+
+        services.TryAddSingleton<UnsupportedSystemConfigurationService>();
+        services.TryAddSingleton<ISystemConfigurationService>(provider => provider.GetRequiredService<UnsupportedSystemConfigurationService>());
+        services.TryAddSingleton<ITimeZoneSettingsProvider>(provider => provider.GetRequiredService<UnsupportedSystemConfigurationService>());
+        services.TryAddSingleton<ILocalUserService, UnsupportedLocalUserService>();
+        services.TryAddSingleton<IUsageMetricsService, UnsupportedUsageMetricsService>();
+        services.TryAddSingleton<INotificationEmailService, UnsupportedNotificationEmailService>();
+        services.TryAddSingleton<IPlatformInitializationService, UnsupportedPlatformInitializationService>();
 
         var storageOptions = configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
         var backend = StorageOptions.NormalizeBackend(storageOptions.Backend);
@@ -35,6 +45,7 @@ public static class DatabaseRegistrationExtensions
                     options.UseSqlite(connectionString, sqlite =>
                         sqlite.MigrationsAssembly(typeof(SqliteSharePasswordDbContext).Assembly.FullName)));
                 services.AddSingleton<ISharePasswordDbContextFactory, SharePasswordDbContextFactory<SqliteSharePasswordDbContext>>();
+                RegisterDatabaseBackedPlatformServices(services);
                 break;
             }
 
@@ -49,6 +60,7 @@ public static class DatabaseRegistrationExtensions
                         sqlServer.MigrationsAssembly(typeof(SqlServerSharePasswordDbContext).Assembly.FullName);
                     }));
                 services.AddSingleton<ISharePasswordDbContextFactory, SharePasswordDbContextFactory<SqlServerSharePasswordDbContext>>();
+                RegisterDatabaseBackedPlatformServices(services);
                 break;
             }
 
@@ -63,6 +75,7 @@ public static class DatabaseRegistrationExtensions
                         npgsql.MigrationsAssembly(typeof(PostgresqlSharePasswordDbContext).Assembly.FullName);
                     }));
                 services.AddSingleton<ISharePasswordDbContextFactory, SharePasswordDbContextFactory<PostgresqlSharePasswordDbContext>>();
+                RegisterDatabaseBackedPlatformServices(services);
                 break;
             }
 
@@ -115,6 +128,17 @@ public static class DatabaseRegistrationExtensions
         services.AddSingleton<IAuditLogSink>(provider => provider.GetRequiredService<DbAuditStore>());
 
         return services;
+    }
+
+    private static void RegisterDatabaseBackedPlatformServices(IServiceCollection services)
+    {
+        services.AddSingleton<DbSystemConfigurationService>();
+        services.AddSingleton<ISystemConfigurationService>(provider => provider.GetRequiredService<DbSystemConfigurationService>());
+        services.AddSingleton<ITimeZoneSettingsProvider>(provider => provider.GetRequiredService<DbSystemConfigurationService>());
+        services.AddSingleton<ILocalUserService, DbLocalUserService>();
+        services.AddSingleton<IUsageMetricsService, DbUsageMetricsService>();
+        services.AddSingleton<INotificationEmailService, SmtpNotificationEmailService>();
+        services.AddSingleton<IPlatformInitializationService, PlatformInitializationService>();
     }
 
     public static async Task ApplyConfiguredStorageMigrationsAsync(this IServiceProvider services, CancellationToken cancellationToken = default)

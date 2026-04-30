@@ -6,20 +6,20 @@ namespace SharePassword.Services;
 
 public sealed class ApplicationTime : IApplicationTime
 {
-    private readonly TimeZoneInfo _timeZone;
+    private readonly ITimeZoneSettingsProvider _timeZoneSettingsProvider;
 
-    public ApplicationTime(IOptions<ApplicationOptions> applicationOptions)
+    public ApplicationTime(ITimeZoneSettingsProvider timeZoneSettingsProvider)
     {
-        _timeZone = ApplicationOptions.ResolveTimeZone(applicationOptions.Value.TimeZoneId);
+        _timeZoneSettingsProvider = timeZoneSettingsProvider;
     }
 
     public DateTime UtcNow => DateTime.UtcNow;
 
     public DateTimeOffset Now => ConvertUtcToApplicationTime(UtcNow);
 
-    public TimeZoneInfo TimeZone => _timeZone;
+    public TimeZoneInfo TimeZone => _timeZoneSettingsProvider.GetCurrentTimeZone();
 
-    public string TimeZoneId => _timeZone.Id;
+    public string TimeZoneId => _timeZoneSettingsProvider.GetCurrentTimeZoneId();
 
     public DateTimeOffset ConvertUtcToApplicationTime(DateTime utcDateTime)
     {
@@ -30,7 +30,7 @@ public sealed class ApplicationTime : IApplicationTime
             _ => DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc)
         };
 
-        return TimeZoneInfo.ConvertTime(new DateTimeOffset(normalizedUtc, TimeSpan.Zero), _timeZone);
+        return TimeZoneInfo.ConvertTime(new DateTimeOffset(normalizedUtc, TimeSpan.Zero), TimeZone);
     }
 
     public string FormatUtcForDisplay(DateTime utcDateTime)

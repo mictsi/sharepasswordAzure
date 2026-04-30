@@ -74,7 +74,7 @@ Production hardening guide: `sharepassword/CONFIGURATION.md`
 - `AzureStorage:KeyVault:*`: Azure Key Vault settings used when `Storage:Backend=azure`.
 - `AzureStorage:TableAudit:*`: Azure Table Storage audit settings used when `Storage:Backend=azure`.
 - `AdminAuth:Username`: local admin username.
-- `AdminAuth:PasswordHash`: required PBKDF2-SHA256 admin password hash.
+- `AdminAuth:PasswordHash`: required password hash. New hashes use Argon2id and fall back to scrypt if Argon2id is unavailable. Legacy PBKDF2-SHA256 hashes are still accepted.
 - `OidcAuth:Enabled`: enable OIDC as alternative admin login.
 - `OidcAuth:Authority`: OIDC authority/issuer URL.
 - `OidcAuth:ClientId`: OIDC client ID.
@@ -99,10 +99,12 @@ Production hardening guide: `sharepassword/CONFIGURATION.md`
 
 ### Generate an admin password hash
 
-The app accepts admin password hashes in this format:
+The app accepts admin password hashes in these formats:
 
 ```text
-PBKDF2$SHA256$<iterations>$<salt-base64>$<hash-base64>
+ARGON2ID$v=19$m=<memory-kib>,t=<iterations>,p=<parallelism>$<salt-base64>$<hash-base64>
+SCRYPT$N=<cost>,r=<block-size>,p=<parallelism>$<salt-base64>$<hash-base64>
+PBKDF2$SHA256$<iterations>$<salt-base64>$<hash-base64>  (legacy)
 ```
 
 Generate a new hash from the repository root with the included PowerShell script:
@@ -111,7 +113,7 @@ Generate a new hash from the repository root with the included PowerShell script
 ./scripts/new-admin-password-hash.ps1
 ```
 
-The script prompts for the password and prints a value you can paste into `AdminAuth:PasswordHash`.
+The script prompts for the password and prints a value you can paste into `AdminAuth:PasswordHash`. It prefers Argon2id and falls back to scrypt only if Argon2id cannot be used on the current runtime.
 
 If you need to pass the password non-interactively:
 
@@ -124,7 +126,7 @@ Update your config to use the generated hash:
 ```json
 "AdminAuth": {
   "Username": "admin",
-  "PasswordHash": "PBKDF2$SHA256$210000$<salt>$<hash>"
+  "PasswordHash": "ARGON2ID$v=19$m=65536,t=3,p=1$<salt>$<hash>"
 }
 ```
 
@@ -189,7 +191,7 @@ Examples:
 - `AzureStorage__KeyVault__VaultUri=https://myvault.vault.azure.net/`
 - `AzureStorage__TableAudit__ServiceSasUrl=<table-service-sas-url>`
 - `AdminAuth__Username=admin`
-- `AdminAuth__PasswordHash=<pbkdf2-hash>`
+- `AdminAuth__PasswordHash=<argon2id-or-scrypt-hash>`
 - `Encryption__Passphrase=<long-random-passphrase>`
 - `OidcAuth__Enabled=true`
 - `OidcAuth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0`

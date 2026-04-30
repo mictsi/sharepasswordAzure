@@ -1,0 +1,134 @@
+@model SharePassword.ViewModels.LocalUserIndexViewModel
+@{
+    ViewData["Title"] = "Users";
+
+    string FormatStamp(DateTime? value)
+    {
+        return value.HasValue
+            ? $"{ApplicationTime.ConvertUtcToApplicationTime(value.Value):MMM dd, yyyy HH:mm} {ApplicationTime.TimeZoneId}"
+            : "Not available";
+    }
+
+    string FormatRoles(IReadOnlyCollection<string> roles)
+    {
+        return roles.Count == 0 ? "No roles" : string.Join(", ", roles);
+    }
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Administration</div>
+        <h1 class="page-title">Local users</h1>
+        <p class="page-subtitle">Create, disable, update, and remove database-backed local accounts, then assign the built-in roles they need.</p>
+    </div>
+    <div class="page-header__actions">
+        <a class="btn btn-primary" asp-action="Create">Create user</a>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.IsSupported)
+{
+    <section class="surface-card empty-state">
+        <h2 class="empty-state__title">Local user management is unavailable</h2>
+        <p class="empty-state__text">This feature is only enabled when the app runs on a database-backed storage backend such as SQLite, SQL Server, or PostgreSQL.</p>
+    </section>
+}
+else if (Model.Users.Count == 0)
+{
+    <section class="surface-card empty-state">
+        <h2 class="empty-state__title">No local users have been created yet</h2>
+        <p class="empty-state__text">The seeded administrator remains available. Add more local users when you need named local access instead of a single fallback account.</p>
+    </section>
+}
+else
+{
+    <section class="surface-card">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h2 class="surface-card__title">Directory</h2>
+            <p class="surface-card__subtitle mb-0">@Model.Users.Count local accounts.</p>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table data-table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Roles</th>
+                        <th>Last login</th>
+                        <th>Share stats</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in Model.Users)
+                    {
+                        <tr>
+                            <td>
+                                <div class="cell-primary">@user.DisplayName</div>
+                                <div class="cell-meta">@user.Username</div>
+                                @if (!string.IsNullOrWhiteSpace(user.Email))
+                                {
+                                    <div class="cell-meta">@user.Email</div>
+                                }
+                            </td>
+                            <td>
+                                <div class="cell-primary">@FormatRoles(user.Roles)</div>
+                                @if (user.IsSeededAdmin)
+                                {
+                                    <div class="cell-meta">Seeded administrator</div>
+                                }
+                            </td>
+                            <td>
+                                <div class="cell-primary">@FormatStamp(user.LastLoginAtUtc)</div>
+                                <div class="cell-meta">Password reset @FormatStamp(user.LastPasswordResetAtUtc)</div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@user.TotalSharesCreated shares</div>
+                                <div class="cell-meta">Last share @FormatStamp(user.LastShareCreatedAtUtc)</div>
+                            </td>
+                            <td>
+                                <span class="status-badge status-badge--@(user.IsDisabled ? "expired" : "active")">@(user.IsDisabled ? "Disabled" : "Enabled")</span>
+                            </td>
+                            <td>
+                                <a class="btn btn-outline-secondary btn-sm" asp-action="Edit" asp-route-id="@user.Id">Manage</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="share-list-mobile">
+            <div class="stack-list">
+                @foreach (var user in Model.Users)
+                {
+                    <article class="surface-card stack-card">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div>
+                                <div class="cell-primary">@user.DisplayName</div>
+                                <div class="cell-meta">@user.Username</div>
+                                <div class="cell-meta">@FormatRoles(user.Roles)</div>
+                            </div>
+                            <span class="status-badge status-badge--@(user.IsDisabled ? "expired" : "active")">@(user.IsDisabled ? "Disabled" : "Enabled")</span>
+                        </div>
+                        <div class="stack-card__row">
+                            <span class="stack-card__label">Last login</span>
+                            <span class="stack-card__value">@FormatStamp(user.LastLoginAtUtc)</span>
+                        </div>
+                        <div class="stack-card__row">
+                            <span class="stack-card__label">Shares created</span>
+                            <span class="stack-card__value">@user.TotalSharesCreated</span>
+                        </div>
+                        <a class="btn btn-outline-secondary mt-3" asp-action="Edit" asp-route-id="@user.Id">Manage</a>
+                    </article>
+                }
+            </div>
+        </div>
+    </section>
+}

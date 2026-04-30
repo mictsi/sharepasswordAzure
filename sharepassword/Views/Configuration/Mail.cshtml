@@ -1,0 +1,107 @@
+@model SharePassword.ViewModels.MailConfigurationViewModel
+@{
+    ViewData["Title"] = "Mail Configuration";
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Administration</div>
+        <h1 class="page-title">Mail configuration</h1>
+        <p class="page-subtitle">Configure SMTP delivery and the editable templates used when a share is opened.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.IsSupported)
+{
+    <section class="surface-card empty-state">
+        <h2 class="empty-state__title">Editable mail configuration is unavailable</h2>
+        <p class="empty-state__text">The app can only persist mail settings when it runs on a database-backed storage backend.</p>
+    </section>
+}
+else
+{
+    <form method="post" class="surface-card form-section">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="form-grid">
+            <div class="field-grid">
+                <div>
+                    <label asp-for="SmtpHost" class="form-label"></label>
+                    <input asp-for="SmtpHost" class="form-control" />
+                </div>
+                <div>
+                    <label asp-for="SmtpPort" class="form-label"></label>
+                    <input asp-for="SmtpPort" class="form-control" type="number" min="1" max="65535" />
+                </div>
+                <div>
+                    <label asp-for="SmtpUsername" class="form-label"></label>
+                    <input asp-for="SmtpUsername" class="form-control" autocomplete="username" />
+                </div>
+                <div>
+                    <label asp-for="SmtpPassword" class="form-label"></label>
+                    <input asp-for="SmtpPassword" class="form-control" type="password" autocomplete="current-password" />
+                </div>
+                <label class="toggle-card">
+                    <input asp-for="UseTls" class="form-check-input" />
+                    <span>Require TLS for SMTP</span>
+                </label>
+            </div>
+
+            <div class="field-grid">
+                <div>
+                    <label asp-for="SenderEmail" class="form-label"></label>
+                    <input asp-for="SenderEmail" class="form-control" autocomplete="email" />
+                </div>
+                <div>
+                    <label asp-for="SenderDisplayName" class="form-label"></label>
+                    <input asp-for="SenderDisplayName" class="form-control" />
+                </div>
+                <div>
+                    <label asp-for="AdminNotificationRecipients" class="form-label"></label>
+                    <textarea asp-for="AdminNotificationRecipients" class="form-control" rows="3" placeholder="admin1@example.com; admin2@example.com"></textarea>
+                </div>
+                <label class="toggle-card">
+                    <input asp-for="NotifyAdminsOnShareAccess" class="form-check-input" />
+                    <span>Email admins when a share is used</span>
+                </label>
+                <label class="toggle-card">
+                    <input asp-for="NotifyCreatorOnShareAccess" class="form-check-input" />
+                    <span>Email the share creator when a share is used</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="field-grid">
+            <div>
+                <label asp-for="ShareAccessedSubjectTemplate" class="form-label"></label>
+                <input asp-for="ShareAccessedSubjectTemplate" class="form-control" />
+            </div>
+            <div>
+                <label asp-for="ShareAccessedBodyTemplate" class="form-label"></label>
+                <textarea asp-for="ShareAccessedBodyTemplate" class="form-control" rows="10"></textarea>
+            </div>
+            <div class="surface-card surface-card--warning">
+                <h2 class="surface-card__title">Template placeholders</h2>
+                <ul class="helper-list">
+                    <li>{{ShareId}}</li>
+                    <li>{{CreatedBy}}</li>
+                    <li>{{RecipientEmail}}</li>
+                    <li>{{SharedUsername}}</li>
+                    <li>{{AccessedBy}}</li>
+                    <li>{{AccessedAt}}</li>
+                    <li>{{ExpiresAt}}</li>
+                    <li>{{TimeZoneId}}</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button type="submit" class="btn btn-primary">Save mail configuration</button>
+        </div>
+    </form>
+}

@@ -7,7 +7,7 @@ This guide focuses on secure production settings for SharePassword.
 Set strong values before deployment:
 
 - `AdminAuth:Username`: non-default admin name.
-- `AdminAuth:PasswordHash`: required PBKDF2-SHA256 admin password hash.
+- `AdminAuth:PasswordHash`: required password hash. New hashes use Argon2id and fall back to scrypt if Argon2id is unavailable. Legacy PBKDF2-SHA256 hashes are still accepted.
 - `Encryption:Passphrase`: long random secret (at least 32 chars).
 
 Recommendations:
@@ -135,6 +135,8 @@ For the Azure backend, shares are stored in Key Vault and audit logs are stored 
 }
 ```
 
+Database-backed platform features such as local user management, editable mail configuration, runtime timezone settings, and persisted KPI counters are only available when `Storage:Backend` is `sqlite`, `sqlserver`, or `postgresql`.
+
 ## 4) Share lifetime and cleanup
 
 Security-related retention:
@@ -151,7 +153,39 @@ Example:
 }
 ```
 
-## 5) Operational hardening
+## 5) Mail notifications
+
+Configure the `Mail` section if administrators and share creators should receive an email when a share is opened:
+
+```json
+"Mail": {
+  "SmtpHost": "smtp.example.com",
+  "Port": 587,
+  "Username": "sharepassword",
+  "Password": "<secret>",
+  "UseTls": true,
+  "SenderEmail": "sharepassword@example.com",
+  "SenderDisplayName": "SharePassword",
+  "AdminNotificationRecipients": "admin1@example.com;admin2@example.com",
+  "NotifyAdminsOnShareAccess": true,
+  "NotifyCreatorOnShareAccess": true,
+  "ShareAccessedSubjectTemplate": "Share used: {{SharedUsername}} for {{RecipientEmail}}",
+  "ShareAccessedBodyTemplate": "A secure share has been used.\n\nShare ID: {{ShareId}}\nCreated by: {{CreatedBy}}\nRecipient: {{RecipientEmail}}\nShared username: {{SharedUsername}}\nAccessed by: {{AccessedBy}}\nAccessed at: {{AccessedAt}}\nExpires at: {{ExpiresAt}}\nTime zone: {{TimeZoneId}}"
+}
+```
+
+Template placeholders:
+
+- `{{ShareId}}`
+- `{{CreatedBy}}`
+- `{{RecipientEmail}}`
+- `{{SharedUsername}}`
+- `{{AccessedBy}}`
+- `{{AccessedAt}}`
+- `{{ExpiresAt}}`
+- `{{TimeZoneId}}`
+
+## 6) Operational hardening
 
 - Set `AllowedHosts` to known hostnames instead of `*` when possible.
 - Run app with least-privileged OS account.
@@ -159,7 +193,7 @@ Example:
 - Store logs centrally and monitor audit events (`admin.login`, `share.access`, `share.create`, `share.revoke`).
 - Back up database securely (encrypted backups).
 
-## 6) Example production override file
+## 7) Example production override file
 
 Create environment-specific config (for example `appsettings.Production.json`):
 

@@ -20,6 +20,8 @@ public class AdminController : Controller
     private readonly IAccessCodeService _accessCodeService;
     private readonly IAuditLogger _auditLogger;
     private readonly IApplicationTime _applicationTime;
+    private readonly ILocalUserService _localUserService;
+    private readonly IUsageMetricsService _usageMetricsService;
     private readonly ShareOptions _shareOptions;
     private readonly OidcAuthOptions _oidcAuthOptions;
     private readonly string _adminRoleName;
@@ -31,6 +33,8 @@ public class AdminController : Controller
         IAccessCodeService accessCodeService,
         IAuditLogger auditLogger,
         IApplicationTime applicationTime,
+        ILocalUserService localUserService,
+        IUsageMetricsService usageMetricsService,
         IOptions<ShareOptions> shareOptions,
         IOptions<OidcAuthOptions> oidcAuthOptions)
     {
@@ -40,6 +44,8 @@ public class AdminController : Controller
         _accessCodeService = accessCodeService;
         _auditLogger = auditLogger;
         _applicationTime = applicationTime;
+        _localUserService = localUserService;
+        _usageMetricsService = usageMetricsService;
         _shareOptions = shareOptions.Value;
         _oidcAuthOptions = oidcAuthOptions.Value;
         _adminRoleName = string.IsNullOrWhiteSpace(_oidcAuthOptions.AdminRoleName) ? "Admin" : _oidcAuthOptions.AdminRoleName.Trim();
@@ -70,6 +76,7 @@ public class AdminController : Controller
                 Id = x.Id,
                 RecipientEmail = x.RecipientEmail,
                 SharedUsername = x.SharedUsername,
+                CreatedBy = x.CreatedBy,
                 CreatedAtUtc = x.CreatedAtUtc,
                 ExpiresAtUtc = x.ExpiresAtUtc,
                 LastAccessedAtUtc = x.LastAccessedAtUtc,
@@ -87,6 +94,7 @@ public class AdminController : Controller
         var visibleAuditLogs = isAdmin
             ? auditLogs
             : auditLogs.Where(x => string.Equals(x.ActorIdentifier, currentUser, StringComparison.OrdinalIgnoreCase)).ToList();
+        var dashboardMetrics = await _usageMetricsService.GetDashboardSnapshotAsync();
 
         var model = new AdminDashboardViewModel
         {
@@ -97,6 +105,11 @@ public class AdminController : Controller
             AccessedCount = allItems.Count(x => x.HasBeenAccessed),
             RevokedCount = visibleAuditLogs.Count(x => x.Success && string.Equals(x.Operation, "share.revoke", StringComparison.OrdinalIgnoreCase)),
             TotalVisibleShares = allItems.Count,
+            TotalSharesCreatedKpi = dashboardMetrics.TotalSharesCreated,
+            TotalShareAccessesKpi = dashboardMetrics.TotalShareAccesses,
+            AdminLoginsKpi = dashboardMetrics.AdminLogins,
+            ExpiredSharesDeletedKpi = dashboardMetrics.ExpiredSharesDeleted,
+            ExpiredUnusedSharesDeletedKpi = dashboardMetrics.ExpiredUnusedSharesDeleted,
             Shares = filteredItems
         };
 
@@ -176,6 +189,8 @@ public class AdminController : Controller
             targetType: "PasswordShare",
             targetId: share.Id.ToString(),
             details: $"Created share for {share.RecipientEmail} expiring at {_applicationTime.FormatUtcForDisplay(share.ExpiresAtUtc)} ({_applicationTime.TimeZoneId}). requireOidcLogin={share.RequireOidcLogin}");
+        await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareCreatedKey, actorType, actorIdentifier, relatedId: share.Id.ToString(), details: $"Share created for {share.RecipientEmail}.");
+        await _localUserService.RecordShareCreatedAsync(actorIdentifier);
 
         var link = ApplicationPathHelper.BuildAbsoluteAppUrl(Request, $"/s/{share.AccessToken}");
 
@@ -212,11 +227,12 @@ public class AdminController : Controller
         await _shareStore.DeleteShareAsync(id);
 
         await _auditLogger.LogAsync(actorType, actorIdentifier, "share.revoke", true, "PasswordShare", id.ToString());
+        await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareRevokedKey, actorType, actorIdentifier, relatedId: id.ToString(), details: "Share revoked.");
         return RedirectToAction(nameof(Index));
     }
 
     [HttpGet]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AuditAccess")]
     public async Task<IActionResult> Audit(string? search, string? actor, string? operation, string? success, string? range = null, int page = 1, int pageSize = 100)
     {
         page = Math.Max(1, page);
@@ -268,7 +284,7 @@ public class AdminController : Controller
     }
 
     [HttpGet]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AuditAccess")]
     public async Task<IActionResult> ExportAuditJson(string? search, string? actor, string? operation, string? success, string? range = null)
     {
         var logs = await _auditLogReader.GetLatestAsync(5000);
@@ -316,7 +332,8 @@ public class AdminController : Controller
     {
         return string.IsNullOrWhiteSpace(search)
             || Contains(item.RecipientEmail, search)
-            || Contains(item.SharedUsername, search);
+            || Contains(item.SharedUsername, search)
+            || Contains(item.CreatedBy, search);
     }
 
     private static bool MatchesDashboardStatus(AdminShareListItemViewModel item, string status)

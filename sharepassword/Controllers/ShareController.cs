@@ -16,6 +16,8 @@ public class ShareController : Controller
     private readonly IPasswordCryptoService _passwordCryptoService;
     private readonly IAuditLogger _auditLogger;
     private readonly IApplicationTime _applicationTime;
+    private readonly IUsageMetricsService _usageMetricsService;
+    private readonly INotificationEmailService _notificationEmailService;
     private readonly OidcAuthOptions _oidcAuthOptions;
 
     public ShareController(
@@ -24,6 +26,8 @@ public class ShareController : Controller
         IPasswordCryptoService passwordCryptoService,
         IAuditLogger auditLogger,
         IApplicationTime applicationTime,
+        IUsageMetricsService usageMetricsService,
+        INotificationEmailService notificationEmailService,
         IOptions<OidcAuthOptions> oidcAuthOptions)
     {
         _shareStore = shareStore;
@@ -31,6 +35,8 @@ public class ShareController : Controller
         _passwordCryptoService = passwordCryptoService;
         _auditLogger = auditLogger;
         _applicationTime = applicationTime;
+        _usageMetricsService = usageMetricsService;
+        _notificationEmailService = notificationEmailService;
         _oidcAuthOptions = oidcAuthOptions.Value;
     }
 
@@ -179,6 +185,16 @@ public class ShareController : Controller
         await _shareStore.UpsertShareAsync(share);
 
         await _auditLogger.LogAsync("external-user", email, "share.access", true, "PasswordShare", share.Id.ToString());
+        await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareAccessedKey, "external-user", email, relatedId: share.Id.ToString(), details: "Share accessed.");
+
+        try
+        {
+            await _notificationEmailService.NotifyShareAccessedAsync(share, email);
+        }
+        catch (Exception ex)
+        {
+            await _auditLogger.LogAsync("system", "mail-service", "mail.share-access.failed", false, "PasswordShare", share.Id.ToString(), ex.GetBaseException().Message);
+        }
 
         var decryptedPassword = _passwordCryptoService.Decrypt(share.EncryptedPassword);
         return View("Credential", new ShareCredentialViewModel

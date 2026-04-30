@@ -8,6 +8,11 @@ using SharePassword.Data;
 using SharePassword.Options;
 using SharePassword.Services;
 
+if (AdminPasswordHashCli.TryRun(args))
+{
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 
@@ -33,7 +38,7 @@ builder.Services
         "AdminAuth:PasswordHash is required.")
     .Validate(
         options => string.IsNullOrWhiteSpace(options.PasswordHash) || AdminPasswordHash.IsValid(options.PasswordHash),
-        "AdminAuth:PasswordHash must use the format PBKDF2$SHA256$<iterations>$<salt-base64>$<hash-base64>.")
+        "AdminAuth:PasswordHash must use a supported hash format. Preferred: ARGON2ID$v=19$m=<memory-kib>,t=<iterations>,p=<parallelism>$<salt-base64>$<hash-base64>; fallback: SCRYPT$N=<cost>,r=<block-size>,p=<parallelism>$<salt-base64>$<hash-base64>; legacy PBKDF2 values remain valid.")
     .ValidateOnStart();
 builder.Services.Configure<EncryptionOptions>(builder.Configuration.GetSection(EncryptionOptions.SectionName));
 builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareOptions.SectionName));
@@ -216,6 +221,7 @@ if (oidcOptions.Enabled)
                     ?? "unknown";
 
                 var auditLogger = context.HttpContext.RequestServices.GetService<IAuditLogger>();
+                var usageMetricsService = context.HttpContext.RequestServices.GetService<IUsageMetricsService>();
                 if (auditLogger is null)
                 {
                     return;
@@ -242,6 +248,14 @@ if (oidcOptions.Enabled)
                         "oidc.login.success",
                         true,
                         details: $"OIDC login succeeded. role={role ?? "(none)"}.");
+                }
+
+                if (usageMetricsService is not null)
+                {
+                    var metricKey = string.Equals(actorType, "admin", StringComparison.OrdinalIgnoreCase)
+                        ? DbUsageMetricsService.AdminLoginKey
+                        : DbUsageMetricsService.UserLoginKey;
+                    await usageMetricsService.RecordAsync(metricKey, actorType, actor, details: "OIDC sign-in succeeded.");
                 }
             }
             catch
@@ -295,6 +309,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole(adminRoleName));
     options.AddPolicy("UserOrAdmin", policy => policy.RequireRole(adminRoleName, userRoleName));
+    options.AddPolicy("AuditAccess", policy => policy.RequireRole(adminRoleName, BuiltInRoleNames.Auditor));
 });
 builder.Services.AddHttpContextAccessor();
 
@@ -308,6 +323,7 @@ var runtimeApplicationOptions = app.Services.GetRequiredService<IOptions<Applica
 var normalizedPathBase = ApplicationOptions.NormalizePathBase(runtimeApplicationOptions.PathBase);
 
 await app.Services.ApplyConfiguredStorageMigrationsAsync();
+await app.Services.GetRequiredService<IPlatformInitializationService>().InitializeAsync();
 
 if (!app.Environment.IsDevelopment())
 {

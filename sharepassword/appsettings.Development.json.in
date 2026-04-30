@@ -1,6 +1,6 @@
 {
   "Application": {
-    "Name": "sharepasswordAzure",
+    "Name": "sharepassword",
     "EnableHttpsRedirection": true,
     "PathBase": "/",
     "TimeZoneId": "UTC",
@@ -69,6 +69,20 @@
   "Share": {
     "DefaultExpiryHours": 4,
     "CleanupIntervalSeconds": 30
+  },
+  "Mail": {
+    "SmtpHost": "localhost",
+    "Port": 2525,
+    "Username": "",
+    "Password": "",
+    "UseTls": false,
+    "SenderEmail": "sharepassword-dev@example.com",
+    "SenderDisplayName": "SharePassword Dev",
+    "AdminNotificationRecipients": "admin@example.com",
+    "NotifyAdminsOnShareAccess": true,
+    "NotifyCreatorOnShareAccess": true,
+    "ShareAccessedSubjectTemplate": "Share used: {{SharedUsername}} for {{RecipientEmail}}",
+    "ShareAccessedBodyTemplate": "A secure share has been used.\n\nShare ID: {{ShareId}}\nCreated by: {{CreatedBy}}\nRecipient: {{RecipientEmail}}\nShared username: {{SharedUsername}}\nAccessed by: {{AccessedBy}}\nAccessed at: {{AccessedAt}}\nExpires at: {{ExpiresAt}}\nTime zone: {{TimeZoneId}}"
   },
   "ConsoleAuditLogging": {
     "Enabled": true,

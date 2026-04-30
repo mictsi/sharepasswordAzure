@@ -9,6 +9,11 @@ public class AdminDashboardViewModel
     public int AccessedCount { get; set; }
     public int RevokedCount { get; set; }
     public int TotalVisibleShares { get; set; }
+    public long TotalSharesCreatedKpi { get; set; }
+    public long TotalShareAccessesKpi { get; set; }
+    public long AdminLoginsKpi { get; set; }
+    public long ExpiredSharesDeletedKpi { get; set; }
+    public long ExpiredUnusedSharesDeletedKpi { get; set; }
     public IReadOnlyList<AdminShareListItemViewModel> Shares { get; set; } = Array.Empty<AdminShareListItemViewModel>();
 
     public bool HasShares => TotalVisibleShares > 0;
