@@ -11,8 +11,6 @@ Supported storage backends for both shares and audit logs:
 - PostgreSQL
 - Azure Key Vault + Azure Table Storage
 
-Latest release: `0.2.6` (2026-02-25).
-
 ## Repository layout
 
 - `sharepassword/` — web application project
