@@ -19,6 +19,7 @@ public class ShareController : Controller
     private readonly IApplicationTime _applicationTime;
     private readonly IUsageMetricsService _usageMetricsService;
     private readonly INotificationEmailService _notificationEmailService;
+    private readonly ISystemConfigurationService _systemConfigurationService;
     private readonly OidcAuthOptions _oidcAuthOptions;
 
     public ShareController(
@@ -29,6 +30,7 @@ public class ShareController : Controller
         IApplicationTime applicationTime,
         IUsageMetricsService usageMetricsService,
         INotificationEmailService notificationEmailService,
+        ISystemConfigurationService systemConfigurationService,
         IOptions<OidcAuthOptions> oidcAuthOptions)
     {
         _shareStore = shareStore;
@@ -38,6 +40,7 @@ public class ShareController : Controller
         _applicationTime = applicationTime;
         _usageMetricsService = usageMetricsService;
         _notificationEmailService = notificationEmailService;
+        _systemConfigurationService = systemConfigurationService;
         _oidcAuthOptions = oidcAuthOptions.Value;
     }
 
@@ -110,11 +113,6 @@ public class ShareController : Controller
             return BadRequest();
         }
 
-        if (!AccessCodeFormat.IsValid(model.Code))
-        {
-            ModelState.AddModelError(nameof(model.Code), AccessCodeFormat.InvalidFormatErrorMessage);
-        }
-
         PasswordShare? share;
         try
         {
@@ -168,11 +166,6 @@ public class ShareController : Controller
             return View(model);
         }
 
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
         if (share is null)
         {
             await _auditLogger.LogAsync("external-user", email, "share.access", false, details: "Unknown token.");
@@ -197,21 +190,36 @@ public class ShareController : Controller
             return View(model);
         }
 
+        var pausedResult = await EnforceShareAccessPauseAsync(share, model, email);
+        if (pausedResult is not null)
+        {
+            return pausedResult;
+        }
+
         if (!string.Equals(share.RecipientEmail, email, StringComparison.OrdinalIgnoreCase))
         {
-            await _auditLogger.LogAsync("external-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), "Email mismatch.");
-            ModelState.AddModelError(string.Empty, "Invalid link or access details.");
+            return await RecordFailedShareAccessAsync(share, model, email, "Email mismatch.");
+        }
+
+        if (!AccessCodeFormat.IsValid(model.Code))
+        {
+            ModelState.AddModelError(nameof(model.Code), AccessCodeFormat.InvalidFormatErrorMessage);
+            return await RecordFailedShareAccessAsync(share, model, email, "Invalid access code format.");
+        }
+
+        if (!ModelState.IsValid)
+        {
             return View(model);
         }
 
         if (!_accessCodeService.Verify(model.Code, share.AccessCodeHash))
         {
-            await _auditLogger.LogAsync("external-user", email, "share.access", false, "PasswordShare", share.Id.ToString(), "Access code mismatch.");
-            ModelState.AddModelError(string.Empty, "Invalid link or access details.");
-            return View(model);
+            return await RecordFailedShareAccessAsync(share, model, email, "Access code mismatch.");
         }
 
         share.LastAccessedAtUtc = _applicationTime.UtcNow;
+        share.FailedAccessAttempts = 0;
+        share.AccessPausedUntilUtc = null;
         try
         {
             await _shareStore.UpsertShareAsync(share);
@@ -287,6 +295,100 @@ public class ShareController : Controller
                ?? User.FindFirstValue("upn")?.Trim().ToLowerInvariant()
                ?? User.FindFirstValue("unique_name")?.Trim().ToLowerInvariant()
                ?? string.Empty;
+    }
+
+    private async Task<IActionResult?> EnforceShareAccessPauseAsync(PasswordShare share, ShareAccessViewModel model, string email)
+    {
+        if (share.AccessPausedUntilUtc is not { } pausedUntilUtc)
+        {
+            return null;
+        }
+
+        var utcNow = _applicationTime.UtcNow;
+        if (pausedUntilUtc > utcNow)
+        {
+            await _auditLogger.LogAsync("external-user", GetAuditIdentifier(email), "share.access", false, "PasswordShare", share.Id.ToString(), "Share access paused after failed attempts.");
+            ModelState.AddModelError(string.Empty, BuildPausedMessage(pausedUntilUtc, utcNow));
+            return View(model);
+        }
+
+        share.FailedAccessAttempts = 0;
+        share.AccessPausedUntilUtc = null;
+        try
+        {
+            await _shareStore.UpsertShareAsync(share);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            await _auditLogger.LogAsync("external-user", GetAuditIdentifier(email), "share.access", false, "PasswordShare", share.Id.ToString(), exception.DiagnosticMessage);
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
+
+        return null;
+    }
+
+    private async Task<IActionResult> RecordFailedShareAccessAsync(PasswordShare share, ShareAccessViewModel model, string email, string details)
+    {
+        SystemConfiguration configuration;
+        try
+        {
+            configuration = await _systemConfigurationService.GetConfigurationAsync();
+        }
+        catch (DatabaseOperationException exception)
+        {
+            await _auditLogger.LogAsync("external-user", GetAuditIdentifier(email), "share.access", false, "PasswordShare", share.Id.ToString(), exception.DiagnosticMessage);
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
+
+        var failedAttemptLimit = Math.Max(1, configuration.ShareAccessFailedAttemptLimit);
+        var pauseMinutes = Math.Max(1, configuration.ShareAccessPauseMinutes);
+        var utcNow = _applicationTime.UtcNow;
+
+        share.FailedAccessAttempts = Math.Max(0, share.FailedAccessAttempts) + 1;
+        if (share.FailedAccessAttempts >= failedAttemptLimit)
+        {
+            share.AccessPausedUntilUtc = utcNow.AddMinutes(pauseMinutes);
+        }
+
+        try
+        {
+            await _shareStore.UpsertShareAsync(share);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            await _auditLogger.LogAsync("external-user", GetAuditIdentifier(email), "share.access", false, "PasswordShare", share.Id.ToString(), exception.DiagnosticMessage);
+            ModelState.AddModelError(string.Empty, exception.UserMessage);
+            return View(model);
+        }
+
+        var auditDetails = share.AccessPausedUntilUtc is null
+            ? details
+            : $"{details} Share access paused after {share.FailedAccessAttempts} failed attempts.";
+        await _auditLogger.LogAsync("external-user", GetAuditIdentifier(email), "share.access", false, "PasswordShare", share.Id.ToString(), auditDetails);
+
+        if (share.AccessPausedUntilUtc is { } pausedUntilUtc)
+        {
+            ModelState.AddModelError(string.Empty, BuildPausedMessage(pausedUntilUtc, utcNow));
+        }
+        else
+        {
+            ModelState.AddModelError(string.Empty, "Invalid link or access details.");
+        }
+
+        return View(model);
+    }
+
+    private static string BuildPausedMessage(DateTime pausedUntilUtc, DateTime utcNow)
+    {
+        var remainingMinutes = Math.Max(1, (int)Math.Ceiling((pausedUntilUtc - utcNow).TotalMinutes));
+        return $"Too many failed attempts for this share. Try again in {remainingMinutes} minute{(remainingMinutes == 1 ? string.Empty : "s")}.";
+    }
+
+    private static string GetAuditIdentifier(string email)
+    {
+        return string.IsNullOrWhiteSpace(email) ? "unknown" : email;
     }
 
     private static bool IsValidToken(string token)

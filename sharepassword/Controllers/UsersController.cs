@@ -71,7 +71,8 @@ public class UsersController : Controller
             Email = model.Email,
             Roles = model.SelectedRoles,
             Password = model.NewPassword,
-            IsDisabled = model.IsDisabled
+            IsDisabled = model.IsDisabled,
+            IsTotpRequired = model.IsTotpRequired
         }, actor);
 
         if (!result.Succeeded)
@@ -115,7 +116,8 @@ public class UsersController : Controller
             DisplayName = model.DisplayName,
             Email = model.Email,
             Roles = model.SelectedRoles,
-            IsDisabled = model.IsDisabled
+            IsDisabled = model.IsDisabled,
+            IsTotpRequired = model.IsTotpRequired
         }, actor);
 
         if (!result.Succeeded)
@@ -175,6 +177,25 @@ public class UsersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveTotp(Guid id)
+    {
+        var actor = GetCurrentUserIdentifier();
+        var result = await _localUserService.RemoveTotpAsync(id, actor);
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = result.ErrorMessage ?? "Unable to reset authenticator app setup.";
+            await _auditLogger.LogAsync("admin", actor, "local-user.totp.reset", false, targetType: "LocalUser", targetId: id.ToString(), details: result.ErrorMessage);
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        await _auditLogger.LogAsync("admin", actor, "local-user.totp.reset", true, targetType: "LocalUser", targetId: id.ToString());
+        await _usageMetricsService.RecordAsync("local-user.totp.reset", "admin", actor, relatedId: id.ToString(), details: $"TOTP setup reset for {result.User!.Username}.");
+        TempData["StatusMessage"] = "Authenticator app setup reset.";
+        return RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(Guid id)
     {
         var actor = GetCurrentUserIdentifier();
@@ -212,6 +233,8 @@ public class UsersController : Controller
             Roles = user.Roles.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             IsDisabled = user.IsDisabled,
             IsSeededAdmin = user.IsSeededAdmin,
+            IsTotpRequired = user.IsTotpRequired,
+            IsTotpConfigured = HasConfirmedTotp(user),
             LastLoginAtUtc = user.LastLoginAtUtc,
             LastShareCreatedAtUtc = user.LastShareCreatedAtUtc,
             LastPasswordResetAtUtc = user.LastPasswordResetAtUtc,
@@ -231,6 +254,8 @@ public class UsersController : Controller
             SelectedRoles = user.Roles.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             IsDisabled = user.IsDisabled,
             IsSeededAdmin = user.IsSeededAdmin,
+            IsTotpRequired = user.IsTotpRequired,
+            IsTotpConfigured = HasConfirmedTotp(user),
             LastLoginAtUtc = user.LastLoginAtUtc,
             LastShareCreatedAtUtc = user.LastShareCreatedAtUtc,
             LastPasswordResetAtUtc = user.LastPasswordResetAtUtc,
@@ -256,5 +281,10 @@ public class UsersController : Controller
                ?? User.FindFirstValue("oid")
                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
                ?? "unknown";
+    }
+
+    private static bool HasConfirmedTotp(LocalUser user)
+    {
+        return !string.IsNullOrWhiteSpace(user.TotpSecretEncrypted) && user.TotpConfirmedAtUtc is not null;
     }
 }

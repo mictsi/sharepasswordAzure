@@ -38,6 +38,8 @@ public sealed class UnsupportedSystemConfigurationService : ISystemConfiguration
             NotifyCreatorOnShareAccess = _mailOptions.NotifyCreatorOnShareAccess,
             ShareAccessedSubjectTemplate = _mailOptions.ShareAccessedSubjectTemplate,
             ShareAccessedBodyTemplate = _mailOptions.ShareAccessedBodyTemplate,
+            ShareAccessFailedAttemptLimit = 5,
+            ShareAccessPauseMinutes = 15,
             UpdatedAtUtc = DateTime.UtcNow,
             UpdatedBy = "configuration"
         });
@@ -49,6 +51,11 @@ public sealed class UnsupportedSystemConfigurationService : ISystemConfiguration
     }
 
     public Task<SystemConfiguration> UpdateTimeZoneAsync(string timeZoneId, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Editable application settings are only available for database-backed storage backends.");
+    }
+
+    public Task<SystemConfiguration> UpdateApplicationSettingsAsync(ApplicationSettingsUpdateRequest request, string actorIdentifier, CancellationToken cancellationToken = default)
     {
         throw new InvalidOperationException("Editable application settings are only available for database-backed storage backends.");
     }
@@ -102,6 +109,18 @@ public sealed class UnsupportedLocalUserService : ILocalUserService
         => Task.FromResult(LocalUserMutationResult.Failed("Local user management is only available for database-backed storage backends."));
 
     public Task<LocalUserMutationResult> ChangeOwnPasswordAsync(Guid id, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+        => Task.FromResult(LocalUserMutationResult.Failed("Local user management is only available for database-backed storage backends."));
+
+    public Task<LocalUserTotpSetupResult> EnsureTotpSetupAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default)
+        => Task.FromResult(LocalUserTotpSetupResult.Failed("Local user management is only available for database-backed storage backends."));
+
+    public Task<LocalUserMutationResult> ConfirmTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default)
+        => Task.FromResult(LocalUserMutationResult.Failed("Local user management is only available for database-backed storage backends."));
+
+    public Task<LocalUserMutationResult> VerifyTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default)
+        => Task.FromResult(LocalUserMutationResult.Failed("Local user management is only available for database-backed storage backends."));
+
+    public Task<LocalUserMutationResult> RemoveTotpAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default)
         => Task.FromResult(LocalUserMutationResult.Failed("Local user management is only available for database-backed storage backends."));
 
     public Task RecordSuccessfulLoginAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;

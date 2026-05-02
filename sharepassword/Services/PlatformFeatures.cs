@@ -44,6 +44,7 @@ public interface ISystemConfigurationService : ITimeZoneSettingsProvider
     Task<SystemConfiguration> GetConfigurationAsync(CancellationToken cancellationToken = default);
     Task<SystemConfiguration> UpdateMailConfigurationAsync(MailConfigurationUpdateRequest request, string actorIdentifier, CancellationToken cancellationToken = default);
     Task<SystemConfiguration> UpdateTimeZoneAsync(string timeZoneId, string actorIdentifier, CancellationToken cancellationToken = default);
+    Task<SystemConfiguration> UpdateApplicationSettingsAsync(ApplicationSettingsUpdateRequest request, string actorIdentifier, CancellationToken cancellationToken = default);
 }
 
 public interface ILocalUserService
@@ -60,6 +61,10 @@ public interface ILocalUserService
     Task<LocalUserMutationResult> DeleteAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default);
     Task<LocalUserMutationResult> ResetPasswordAsync(Guid id, string newPassword, string actorIdentifier, CancellationToken cancellationToken = default);
     Task<LocalUserMutationResult> ChangeOwnPasswordAsync(Guid id, string currentPassword, string newPassword, CancellationToken cancellationToken = default);
+    Task<LocalUserTotpSetupResult> EnsureTotpSetupAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default);
+    Task<LocalUserMutationResult> ConfirmTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default);
+    Task<LocalUserMutationResult> VerifyTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default);
+    Task<LocalUserMutationResult> RemoveTotpAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default);
     Task RecordSuccessfulLoginAsync(Guid id, CancellationToken cancellationToken = default);
     Task RecordShareCreatedAsync(string actorIdentifier, CancellationToken cancellationToken = default);
     Task<string?> ResolveEmailAsync(string actorIdentifier, CancellationToken cancellationToken = default);
@@ -98,6 +103,13 @@ public sealed class MailConfigurationUpdateRequest
     public string ShareAccessedBodyTemplate { get; set; } = string.Empty;
 }
 
+public sealed class ApplicationSettingsUpdateRequest
+{
+    public string TimeZoneId { get; set; } = "UTC";
+    public int ShareAccessFailedAttemptLimit { get; set; } = 5;
+    public int ShareAccessPauseMinutes { get; set; } = 15;
+}
+
 public sealed class LocalUserUpsertRequest
 {
     public string Username { get; set; } = string.Empty;
@@ -106,6 +118,7 @@ public sealed class LocalUserUpsertRequest
     public IReadOnlyCollection<string> Roles { get; set; } = Array.Empty<string>();
     public string? Password { get; set; }
     public bool IsDisabled { get; set; }
+    public bool IsTotpRequired { get; set; }
 }
 
 public sealed class LocalUserAuthenticationResult
@@ -140,6 +153,32 @@ public sealed class LocalUserMutationResult
 
     public static LocalUserMutationResult Success(LocalUser user) => new(true, user, null);
     public static LocalUserMutationResult Failed(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed class LocalUserTotpSetupResult
+{
+    private LocalUserTotpSetupResult(bool succeeded, LocalUser? user, TotpSetupDetails? setup, string? errorMessage)
+    {
+        Succeeded = succeeded;
+        User = user;
+        Setup = setup;
+        ErrorMessage = errorMessage;
+    }
+
+    public bool Succeeded { get; }
+    public LocalUser? User { get; }
+    public TotpSetupDetails? Setup { get; }
+    public string? ErrorMessage { get; }
+
+    public static LocalUserTotpSetupResult Success(LocalUser user, TotpSetupDetails setup) => new(true, user, setup, null);
+    public static LocalUserTotpSetupResult Failed(string errorMessage) => new(false, null, null, errorMessage);
+}
+
+public sealed class TotpSetupDetails
+{
+    public string SecretKey { get; init; } = string.Empty;
+    public string ProvisioningUri { get; init; } = string.Empty;
+    public string QrCodeSvg { get; init; } = string.Empty;
 }
 
 public sealed class DashboardMetricsSnapshot

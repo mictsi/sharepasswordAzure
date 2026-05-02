@@ -9,6 +9,8 @@ public class LocalUserListItemViewModel
     public IReadOnlyCollection<string> Roles { get; set; } = Array.Empty<string>();
     public bool IsDisabled { get; set; }
     public bool IsSeededAdmin { get; set; }
+    public bool IsTotpRequired { get; set; }
+    public bool IsTotpConfigured { get; set; }
     public DateTime? LastLoginAtUtc { get; set; }
     public DateTime? LastShareCreatedAtUtc { get; set; }
     public DateTime? LastPasswordResetAtUtc { get; set; }

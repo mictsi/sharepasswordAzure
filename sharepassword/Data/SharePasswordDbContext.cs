@@ -42,6 +42,8 @@ public abstract class SharePasswordDbContext : DbContext
         shares.Property(x => x.LastAccessedAtUtc).HasConversion(NullableUtcDateTimeConverter);
         shares.Property(x => x.CreatedBy).IsRequired().HasMaxLength(256);
         shares.Property(x => x.RequireOidcLogin).IsRequired();
+        shares.Property(x => x.FailedAccessAttempts).IsRequired();
+        shares.Property(x => x.AccessPausedUntilUtc).HasConversion(NullableUtcDateTimeConverter);
         shares.HasIndex(x => x.AccessToken).IsUnique();
         shares.HasIndex(x => x.CreatedBy);
         shares.HasIndex(x => x.ExpiresAtUtc);
@@ -71,6 +73,12 @@ public abstract class SharePasswordDbContext : DbContext
         localUsers.Property(x => x.Email).HasMaxLength(256);
         localUsers.Property(x => x.PasswordHash).IsRequired().HasMaxLength(512);
         localUsers.Property(x => x.Roles).IsRequired().HasMaxLength(512);
+        localUsers.Property(x => x.IsTotpRequired).IsRequired();
+        localUsers.Property(x => x.TotpSecretEncrypted).HasMaxLength(512);
+        localUsers.Property(x => x.TotpConfirmedAtUtc).HasConversion(NullableUtcDateTimeConverter);
+        localUsers.Property(x => x.PendingTotpSecretEncrypted).HasMaxLength(512);
+        localUsers.Property(x => x.PendingTotpCreatedAtUtc).HasConversion(NullableUtcDateTimeConverter);
+        localUsers.Property(x => x.LastTotpResetAtUtc).HasConversion(NullableUtcDateTimeConverter);
         localUsers.Property(x => x.CreatedAtUtc).IsRequired().HasConversion(UtcDateTimeConverter);
         localUsers.Property(x => x.UpdatedAtUtc).IsRequired().HasConversion(UtcDateTimeConverter);
         localUsers.Property(x => x.LastLoginAtUtc).HasConversion(NullableUtcDateTimeConverter);
@@ -92,6 +100,8 @@ public abstract class SharePasswordDbContext : DbContext
         systemConfigurations.Property(x => x.AdminNotificationRecipients).HasMaxLength(1024);
         systemConfigurations.Property(x => x.ShareAccessedSubjectTemplate).HasMaxLength(512);
         systemConfigurations.Property(x => x.ShareAccessedBodyTemplate).HasMaxLength(4000);
+        systemConfigurations.Property(x => x.ShareAccessFailedAttemptLimit).IsRequired();
+        systemConfigurations.Property(x => x.ShareAccessPauseMinutes).IsRequired();
         systemConfigurations.Property(x => x.UpdatedAtUtc).IsRequired().HasConversion(UtcDateTimeConverter);
         systemConfigurations.Property(x => x.UpdatedBy).IsRequired().HasMaxLength(256);
 

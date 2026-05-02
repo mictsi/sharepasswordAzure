@@ -67,6 +67,10 @@
                 <input asp-for="IsDisabled" class="form-check-input" />
                 <span>Disable this account</span>
             </label>
+            <label class="toggle-card">
+                <input asp-for="IsTotpRequired" class="form-check-input" />
+                <span>Require authenticator app code at sign-in</span>
+            </label>
         </div>
     </div>
 
@@ -100,6 +104,28 @@
         </div>
     </div>
 </section>
+
+<form method="post" asp-action="RemoveTotp" asp-route-id="@Model.Id" class="surface-card form-section" data-confirm="Reset authenticator app setup for this local user?">
+    <div class="form-section__header">
+        <h2 class="surface-card__title">Authenticator app</h2>
+        <p class="surface-card__subtitle mb-0">Reset this account's TOTP setup when the user has lost access to their authenticator app or needs to enroll a new device.</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-tile">
+            <span class="stat-tile__label">Required</span>
+            <span class="stat-tile__value">@(Model.IsTotpRequired ? "Yes" : "No")</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">Configured</span>
+            <span class="stat-tile__value">@(Model.IsTotpConfigured ? "Yes" : "No")</span>
+        </div>
+    </div>
+
+    <div class="action-row">
+        <button type="submit" class="btn btn-outline-danger" disabled="@(!Model.IsTotpConfigured)">Reset authenticator setup</button>
+    </div>
+</form>
 
 <form method="post" asp-action="ResetPassword" class="surface-card form-section">
     <input type="hidden" name="UserId" value="@Model.ResetPassword!.UserId" />

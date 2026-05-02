@@ -13,6 +13,8 @@ Secure password sharing for external users with:
 - EF Core-backed storage for SQLite, SQL Server, or PostgreSQL
 - Azure backend using Key Vault for shares and Azure Table Storage for audit logs
 - Automatic expiration and cleanup (default 4 hours)
+- Optional authenticator app codes for local accounts
+- Per-share failed access attempt pause controls
 - Audit logging for admin, user, and system operations
 
 ## Run
@@ -175,6 +177,25 @@ Timezone examples for `Application:TimeZoneId`:
 - Group claims are mapped to app roles using `OidcAuth:AdminGroups` and `OidcAuth:UserGroups`.
 - If you use `scripts/provision-azure.ps1`, the created OIDC app is configured with `groupMembershipClaims=SecurityGroup` by default so `groups` claims are emitted in tokens.
 - Shares can optionally require OIDC login (`Require Entra ID login to access`), in which case only the configured recipient email can access the secret.
+
+### Local account authenticator codes
+
+Database-backed storage modes support authenticator app codes for local accounts.
+
+- Admins can require authenticator setup per user from `/users`.
+- Users with required authenticator setup are taken through onboarding after password sign-in.
+- The onboarding page shows a QR code, manual key, and provisioning URI and can be printed for archival storage.
+- Confirmed authenticator setup details are never shown again. If a user changes their authenticator, a new setup is generated and the old setup remains active until the new code is verified.
+- Admins can reset a user's authenticator setup from the user edit page when the current authenticator is lost. If the account still requires authenticator codes, the user must onboard again at next sign-in.
+
+### Share access failed-attempt pause
+
+The application settings page includes per-share lockout controls:
+
+- Failed attempts before pause
+- Pause duration in minutes
+
+Failed recipient email or access code attempts are counted against that specific share. After the threshold is reached, attempts for that share are paused until the configured time has elapsed; successful access clears the failed-attempt state.
 
 ### Environment variables (Docker / Azure App Service)
 

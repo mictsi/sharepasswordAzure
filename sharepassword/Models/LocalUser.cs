@@ -10,6 +10,13 @@ public class LocalUser
     public string Roles { get; set; } = string.Empty;
     public bool IsDisabled { get; set; }
     public bool IsSeededAdmin { get; set; }
+    public bool IsTotpRequired { get; set; }
+    public string TotpSecretEncrypted { get; set; } = string.Empty;
+    public DateTime? TotpConfirmedAtUtc { get; set; }
+    public long? LastTotpTimeStepMatched { get; set; }
+    public string PendingTotpSecretEncrypted { get; set; } = string.Empty;
+    public DateTime? PendingTotpCreatedAtUtc { get; set; }
+    public DateTime? LastTotpResetAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
     public DateTime? LastLoginAtUtc { get; set; }

@@ -6,5 +6,30 @@
         },
         "dotnet list": true,
         "dotnet run": true
-    }
+    },
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "tsi-db.swedencentral.cloudapp.azure.com",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "tsi-db-ug",
+            "group": "UG",
+            "database": "ug",
+            "username": "ug",
+            "password": "kalle..99kalle..99"
+        },
+        {
+            "previewLimit": 50,
+            "server": "tsi-db.swedencentral.cloudapp.azure.com",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "tsi-db-ug",
+            "group": "UG",
+            "database": "ug",
+            "username": "ug",
+            "password": "kalle..99kalle..99"
+        }
+    ],
+    "sqltools.useNodeRuntime": true
 }

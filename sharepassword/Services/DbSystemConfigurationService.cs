@@ -129,6 +129,49 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
             cancellationToken);
     }
 
+    public async Task<SystemConfiguration> UpdateApplicationSettingsAsync(ApplicationSettingsUpdateRequest request, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        var normalizedTimeZoneId = NormalizeTimeZoneId(request.TimeZoneId);
+        if (!ApplicationOptions.IsValidTimeZoneId(normalizedTimeZoneId))
+        {
+            throw new TimeZoneNotFoundException($"Time zone '{normalizedTimeZoneId}' is not available on this host.");
+        }
+
+        return await _databaseOperationRunner.ExecuteAsync(
+            "update application settings",
+            DatabaseOperationPurpose.Write,
+            async innerCancellationToken =>
+            {
+                await _gate.WaitAsync(innerCancellationToken);
+                try
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var configuration = await dbContext.SystemConfigurations.SingleOrDefaultAsync(x => x.Id == 1, innerCancellationToken)
+                        ?? CreateDefaultConfiguration();
+
+                    configuration.TimeZoneId = normalizedTimeZoneId;
+                    configuration.ShareAccessFailedAttemptLimit = NormalizeFailedAttemptLimit(request.ShareAccessFailedAttemptLimit);
+                    configuration.ShareAccessPauseMinutes = NormalizePauseMinutes(request.ShareAccessPauseMinutes);
+                    configuration.UpdatedAtUtc = DateTime.UtcNow;
+                    configuration.UpdatedBy = Trim(actorIdentifier, 256);
+
+                    if (dbContext.Entry(configuration).State == EntityState.Detached)
+                    {
+                        dbContext.SystemConfigurations.Add(configuration);
+                    }
+
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+                    _currentTimeZoneId = normalizedTimeZoneId;
+                    return Clone(configuration);
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            },
+            cancellationToken);
+    }
+
     private async Task<SystemConfiguration> EnsureConfigurationAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -181,6 +224,8 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
             NotifyCreatorOnShareAccess = _mailOptions.NotifyCreatorOnShareAccess,
             ShareAccessedSubjectTemplate = Trim(_mailOptions.ShareAccessedSubjectTemplate, 512),
             ShareAccessedBodyTemplate = Trim(_mailOptions.ShareAccessedBodyTemplate, 4000),
+            ShareAccessFailedAttemptLimit = 5,
+            ShareAccessPauseMinutes = 15,
             UpdatedAtUtc = DateTime.UtcNow,
             UpdatedBy = "configuration"
         };
@@ -217,6 +262,18 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
             changed = true;
         }
 
+        if (configuration.ShareAccessFailedAttemptLimit <= 0)
+        {
+            configuration.ShareAccessFailedAttemptLimit = 5;
+            changed = true;
+        }
+
+        if (configuration.ShareAccessPauseMinutes <= 0)
+        {
+            configuration.ShareAccessPauseMinutes = 15;
+            changed = true;
+        }
+
         return changed;
     }
 
@@ -229,6 +286,16 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
     {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
+    }
+
+    private static int NormalizeFailedAttemptLimit(int value)
+    {
+        return Math.Clamp(value, 1, 100);
+    }
+
+    private static int NormalizePauseMinutes(int value)
+    {
+        return Math.Clamp(value, 1, 1440);
     }
 
     private static SystemConfiguration Clone(SystemConfiguration source)
@@ -249,6 +316,8 @@ public sealed class DbSystemConfigurationService : ISystemConfigurationService
             NotifyCreatorOnShareAccess = source.NotifyCreatorOnShareAccess,
             ShareAccessedSubjectTemplate = source.ShareAccessedSubjectTemplate,
             ShareAccessedBodyTemplate = source.ShareAccessedBodyTemplate,
+            ShareAccessFailedAttemptLimit = source.ShareAccessFailedAttemptLimit,
+            ShareAccessPauseMinutes = source.ShareAccessPauseMinutes,
             UpdatedAtUtc = source.UpdatedAtUtc,
             UpdatedBy = source.UpdatedBy
         };

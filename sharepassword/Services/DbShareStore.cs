@@ -148,7 +148,9 @@ public class DbShareStore : IShareStore
             ExpiresAtUtc = EnsureUtc(share.ExpiresAtUtc),
             LastAccessedAtUtc = EnsureUtc(share.LastAccessedAtUtc),
             CreatedBy = share.CreatedBy ?? string.Empty,
-            RequireOidcLogin = share.RequireOidcLogin
+            RequireOidcLogin = share.RequireOidcLogin,
+            FailedAccessAttempts = Math.Max(0, share.FailedAccessAttempts),
+            AccessPausedUntilUtc = EnsureUtc(share.AccessPausedUntilUtc)
         };
     }
 
@@ -165,6 +167,8 @@ public class DbShareStore : IShareStore
         target.LastAccessedAtUtc = source.LastAccessedAtUtc;
         target.CreatedBy = source.CreatedBy;
         target.RequireOidcLogin = source.RequireOidcLogin;
+        target.FailedAccessAttempts = source.FailedAccessAttempts;
+        target.AccessPausedUntilUtc = source.AccessPausedUntilUtc;
     }
 
     private static string NormalizeToken(string? token)

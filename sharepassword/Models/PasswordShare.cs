@@ -14,4 +14,6 @@ public class PasswordShare
     public DateTime? LastAccessedAtUtc { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
     public bool RequireOidcLogin { get; set; }
+    public int FailedAccessAttempts { get; set; }
+    public DateTime? AccessPausedUntilUtc { get; set; }
 }

@@ -1,0 +1,79 @@
+@model SharePassword.ViewModels.TotpSetupViewModel
+@{
+    ViewData["Title"] = "Authenticator App Setup";
+}
+
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Account security</div>
+        <h1 class="page-title">@(Model.IsReplacingExistingSetup ? "Change authenticator app" : "Authenticator app setup")</h1>
+        <p class="page-subtitle">Scan the QR code with an authenticator app, or enter the manual key. Print this page if you need an archival copy.</p>
+    </div>
+    <div class="page-header__actions no-print">
+        <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Print setup</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<section class="surface-card form-section">
+    <div class="form-section__header">
+        <h2 class="surface-card__title">@Model.Username</h2>
+        @if (Model.IsReplacingExistingSetup)
+        {
+            <p class="surface-card__subtitle mb-0">This is a new authenticator setup. Your current authenticator remains active until this new code is verified.</p>
+        }
+        else
+        {
+            <p class="surface-card__subtitle mb-0">Keep the manual key private. Anyone with this key can generate valid sign-in codes for this account.</p>
+        }
+    </div>
+
+    <div class="form-grid">
+        <div class="text-center totp-qr">
+            @Html.Raw(Model.QrCodeSvg)
+        </div>
+        <div class="field-grid">
+            <div>
+                <label class="form-label">Manual key</label>
+                <input class="form-control" value="@Model.SecretKey" readonly />
+            </div>
+            <div>
+                <label class="form-label">Provisioning URI</label>
+                <textarea class="form-control" rows="4" readonly>@Model.ProvisioningUri</textarea>
+            </div>
+        </div>
+    </div>
+</section>
+
+<form method="post" class="surface-card form-section no-print">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="form-section__header">
+        <h2 class="surface-card__title">Confirm setup</h2>
+        <p class="surface-card__subtitle mb-0">Enter the current 6-digit code from the new authenticator setup to activate it.</p>
+    </div>
+
+    <div class="form-grid">
+        <div>
+            <label asp-for="Code" class="form-label"></label>
+            <input asp-for="Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+            <span asp-validation-for="Code" class="text-danger"></span>
+        </div>
+    </div>
+
+    <div class="action-row">
+        <button type="submit" class="btn btn-primary">Confirm authenticator app</button>
+        @if (!Model.IsPendingLogin)
+        {
+            <a class="btn btn-outline-secondary" asp-action="Profile">Back to profile</a>
+        }
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
