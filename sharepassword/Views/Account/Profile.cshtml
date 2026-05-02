@@ -46,6 +46,14 @@
             <span class="stat-tile__value">@(Model.Roles.Count == 0 ? "None" : string.Join(", ", Model.Roles))</span>
         </div>
         <div class="stat-tile">
+            <span class="stat-tile__label">Authenticator app</span>
+            <span class="stat-tile__value">@(Model.IsTotpConfigured ? "Configured" : "Not configured")</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile__label">TOTP required</span>
+            <span class="stat-tile__value">@(Model.IsTotpRequired ? "Yes" : "No")</span>
+        </div>
+        <div class="stat-tile">
             <span class="stat-tile__label">Last login</span>
             <span class="stat-tile__value">@FormatStamp(Model.LastLoginAtUtc)</span>
         </div>
@@ -73,6 +81,16 @@
 }
 else
 {
+    <section class="surface-card form-section">
+        <div class="form-section__header">
+            <h2 class="surface-card__title">Authenticator app</h2>
+            <p class="surface-card__subtitle mb-0">Setup details are shown only for a new authenticator. If access to the current authenticator is lost, an administrator must reset it.</p>
+        </div>
+        <div class="action-row">
+            <a class="btn btn-outline-primary" asp-action="TotpSetup">@(Model.IsTotpConfigured ? "Change authenticator app" : "Set up authenticator app")</a>
+        </div>
+    </section>
+
     <form method="post" class="surface-card form-section">
         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 

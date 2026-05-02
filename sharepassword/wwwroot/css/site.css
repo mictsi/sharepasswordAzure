@@ -958,6 +958,11 @@ textarea.form-control {
   margin-bottom: 1rem;
 }
 
+.totp-qr svg {
+  width: min(100%, 18rem);
+  height: auto;
+}
+
 .pagination {
   gap: 0.45rem;
 }
@@ -981,6 +986,35 @@ textarea.form-control {
 .modal-header,
 .modal-footer {
   border-color: rgba(215, 227, 242, 0.9);
+}
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .no-print,
+  .app-chrome,
+  .app-footer {
+    display: none !important;
+  }
+
+  .app-shell__body {
+    padding: 0;
+  }
+
+  .app-stage {
+    width: 100%;
+    gap: 1rem;
+  }
+
+  .surface-card,
+  .public-card,
+  .auth-card {
+    border: 1px solid #d7e3f2;
+    box-shadow: none;
+    break-inside: avoid;
+  }
 }
 
 @media (max-width: 991.98px) {

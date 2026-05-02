@@ -322,8 +322,9 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddScoped<IPasswordCryptoService, PasswordCryptoService>();
+builder.Services.AddSingleton<IPasswordCryptoService, PasswordCryptoService>();
 builder.Services.AddScoped<IAccessCodeService, AccessCodeService>();
+builder.Services.AddSingleton<ITotpService, TotpService>();
 builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 builder.Services.AddHostedService<ExpiredShareCleanupService>();
 

@@ -79,6 +79,7 @@ else
                             </td>
                             <td>
                                 <div class="cell-primary">@FormatRoles(user.Roles)</div>
+                                <div class="cell-meta">TOTP @(user.IsTotpRequired ? "required" : "optional"), @(user.IsTotpConfigured ? "configured" : "not configured")</div>
                                 @if (user.IsSeededAdmin)
                                 {
                                     <div class="cell-meta">Seeded administrator</div>
@@ -114,6 +115,7 @@ else
                                 <div class="cell-primary">@user.DisplayName</div>
                                 <div class="cell-meta">@user.Username</div>
                                 <div class="cell-meta">@FormatRoles(user.Roles)</div>
+                                <div class="cell-meta">TOTP @(user.IsTotpRequired ? "required" : "optional"), @(user.IsTotpConfigured ? "configured" : "not configured")</div>
                             </div>
                             <span class="status-badge status-badge--@(user.IsDisabled ? "expired" : "active")">@(user.IsDisabled ? "Disabled" : "Enabled")</span>
                         </div>

@@ -10,6 +10,8 @@ public sealed class DbLocalUserService : ILocalUserService
 {
     private readonly ISharePasswordDbContextFactory _dbContextFactory;
     private readonly IDatabaseOperationRunner _databaseOperationRunner;
+    private readonly IPasswordCryptoService _passwordCryptoService;
+    private readonly ITotpService _totpService;
     private readonly ILogger<DbLocalUserService> _logger;
     private readonly IReadOnlyList<string> _availableRoles;
     private readonly string _adminRoleName;
@@ -19,10 +21,14 @@ public sealed class DbLocalUserService : ILocalUserService
         ISharePasswordDbContextFactory dbContextFactory,
         IOptions<OidcAuthOptions> oidcOptions,
         IDatabaseOperationRunner databaseOperationRunner,
+        IPasswordCryptoService passwordCryptoService,
+        ITotpService totpService,
         ILogger<DbLocalUserService> logger)
     {
         _dbContextFactory = dbContextFactory;
         _databaseOperationRunner = databaseOperationRunner;
+        _passwordCryptoService = passwordCryptoService;
+        _totpService = totpService;
         _logger = logger;
 
         var options = oidcOptions.Value;
@@ -64,6 +70,7 @@ public sealed class DbLocalUserService : ILocalUserService
                         Roles = roles,
                         IsDisabled = false,
                         IsSeededAdmin = true,
+                        IsTotpRequired = false,
                         CreatedAtUtc = now,
                         UpdatedAtUtc = now,
                         LastPasswordResetAtUtc = now
@@ -218,6 +225,7 @@ public sealed class DbLocalUserService : ILocalUserService
                         PasswordHash = AdminPasswordHash.Create(request.Password),
                         Roles = SerializeRoles(normalizedRoles),
                         IsDisabled = request.IsDisabled,
+                        IsTotpRequired = request.IsTotpRequired,
                         CreatedAtUtc = now,
                         UpdatedAtUtc = now,
                         LastPasswordResetAtUtc = now,
@@ -279,6 +287,7 @@ public sealed class DbLocalUserService : ILocalUserService
                     user.Email = NormalizeEmail(request.Email);
                     user.Roles = SerializeRoles(normalizedRoles);
                     user.IsDisabled = request.IsDisabled;
+                    user.IsTotpRequired = request.IsTotpRequired;
                     user.UpdatedAtUtc = DateTime.UtcNow;
 
                     await dbContext.SaveChangesAsync(innerCancellationToken);
@@ -399,6 +408,87 @@ public sealed class DbLocalUserService : ILocalUserService
         }
     }
 
+    public async Task<LocalUserTotpSetupResult> EnsureTotpSetupAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await ExecuteWriteAsync(
+                "ensure local user totp setup",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserTotpSetupResult.Failed("The selected user could not be found.");
+                    }
+
+                    var secretKey = string.IsNullOrWhiteSpace(user.PendingTotpSecretEncrypted)
+                        ? _totpService.GenerateSecretKey()
+                        : _passwordCryptoService.Decrypt(user.PendingTotpSecretEncrypted);
+
+                    if (string.IsNullOrWhiteSpace(user.PendingTotpSecretEncrypted))
+                    {
+                        user.PendingTotpSecretEncrypted = _passwordCryptoService.Encrypt(secretKey);
+                        user.PendingTotpCreatedAtUtc = DateTime.UtcNow;
+                        user.UpdatedAtUtc = DateTime.UtcNow;
+                        await dbContext.SaveChangesAsync(innerCancellationToken);
+                    }
+
+                    return LocalUserTotpSetupResult.Success(Clone(user), _totpService.BuildSetup(secretKey, GetTotpAccountName(user)));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            return LocalUserTotpSetupResult.Failed(exception.UserMessage);
+        }
+    }
+
+    public async Task<LocalUserMutationResult> ConfirmTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        return await VerifyTotpCoreAsync(id, code, requireConfirmedSecret: false, confirmSetup: true, cancellationToken);
+    }
+
+    public async Task<LocalUserMutationResult> VerifyTotpAsync(Guid id, string code, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        return await VerifyTotpCoreAsync(id, code, requireConfirmedSecret: true, confirmSetup: false, cancellationToken);
+    }
+
+    public async Task<LocalUserMutationResult> RemoveTotpAsync(Guid id, string actorIdentifier, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await ExecuteWriteAsync(
+                "remove local user totp",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
+
+                    user.TotpSecretEncrypted = string.Empty;
+                    user.TotpConfirmedAtUtc = null;
+                    user.LastTotpTimeStepMatched = null;
+                    user.PendingTotpSecretEncrypted = string.Empty;
+                    user.PendingTotpCreatedAtUtc = null;
+                    user.LastTotpResetAtUtc = DateTime.UtcNow;
+                    user.UpdatedAtUtc = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            return LocalUserMutationResult.Failed(exception.UserMessage);
+        }
+    }
+
     public async Task RecordSuccessfulLoginAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await ExecuteBestEffortWriteAsync(
@@ -500,6 +590,54 @@ public sealed class DbLocalUserService : ILocalUserService
         }
     }
 
+    private async Task<LocalUserMutationResult> VerifyTotpCoreAsync(Guid id, string code, bool requireConfirmedSecret, bool confirmSetup, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ExecuteWriteAsync(
+                confirmSetup ? "confirm local user totp" : "verify local user totp",
+                async innerCancellationToken =>
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(innerCancellationToken);
+                    var user = await dbContext.LocalUsers.SingleOrDefaultAsync(x => x.Id == id, innerCancellationToken);
+                    if (user is null)
+                    {
+                        return LocalUserMutationResult.Failed("The selected user could not be found.");
+                    }
+
+                    var secretKey = GetTotpSecretForVerification(user, requireConfirmedSecret, confirmSetup, out var lastTimeStepMatched, out var errorMessage);
+                    if (secretKey is null)
+                    {
+                        return LocalUserMutationResult.Failed(errorMessage ?? "Authenticator app setup is required.");
+                    }
+
+                    if (!_totpService.VerifyCode(secretKey, code, lastTimeStepMatched, out var timeStepMatched))
+                    {
+                        return LocalUserMutationResult.Failed("Invalid authenticator code.");
+                    }
+
+                    if (confirmSetup)
+                    {
+                        user.TotpSecretEncrypted = user.PendingTotpSecretEncrypted;
+                        user.TotpConfirmedAtUtc = DateTime.UtcNow;
+                        user.PendingTotpSecretEncrypted = string.Empty;
+                        user.PendingTotpCreatedAtUtc = null;
+                    }
+
+                    user.LastTotpTimeStepMatched = timeStepMatched;
+                    user.UpdatedAtUtc = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync(innerCancellationToken);
+
+                    return LocalUserMutationResult.Success(Clone(user));
+                },
+                cancellationToken);
+        }
+        catch (DatabaseOperationException exception)
+        {
+            return LocalUserMutationResult.Failed(exception.UserMessage);
+        }
+    }
+
     private async Task<bool> WouldRemoveLastEnabledAdminAsync(SharePasswordDbContext dbContext, LocalUser user, IReadOnlyCollection<string> resultingRoles, bool resultingDisabled, CancellationToken cancellationToken)
     {
         var currentRoles = ParseRoles(user.Roles);
@@ -570,6 +708,43 @@ public sealed class DbLocalUserService : ILocalUserService
         return normalized.Length <= 256 ? normalized : normalized[..256];
     }
 
+    private static string GetTotpAccountName(LocalUser user)
+    {
+        return string.IsNullOrWhiteSpace(user.Email) ? user.Username : user.Email;
+    }
+
+    private string? GetTotpSecretForVerification(LocalUser user, bool requireConfirmedSecret, bool confirmSetup, out long? lastTimeStepMatched, out string? errorMessage)
+    {
+        lastTimeStepMatched = user.LastTotpTimeStepMatched;
+        errorMessage = null;
+
+        if (confirmSetup)
+        {
+            if (string.IsNullOrWhiteSpace(user.PendingTotpSecretEncrypted))
+            {
+                errorMessage = "Authenticator app setup is required.";
+                return null;
+            }
+
+            lastTimeStepMatched = null;
+            return _passwordCryptoService.Decrypt(user.PendingTotpSecretEncrypted);
+        }
+
+        if (string.IsNullOrWhiteSpace(user.TotpSecretEncrypted))
+        {
+            errorMessage = "Authenticator app setup is required.";
+            return null;
+        }
+
+        if (requireConfirmedSecret && user.TotpConfirmedAtUtc is null)
+        {
+            errorMessage = "Authenticator app setup must be confirmed before sign-in.";
+            return null;
+        }
+
+        return _passwordCryptoService.Decrypt(user.TotpSecretEncrypted);
+    }
+
     private static LocalUser Clone(LocalUser source)
     {
         return new LocalUser
@@ -582,6 +757,13 @@ public sealed class DbLocalUserService : ILocalUserService
             Roles = source.Roles,
             IsDisabled = source.IsDisabled,
             IsSeededAdmin = source.IsSeededAdmin,
+            IsTotpRequired = source.IsTotpRequired,
+            TotpSecretEncrypted = source.TotpSecretEncrypted,
+            TotpConfirmedAtUtc = source.TotpConfirmedAtUtc,
+            LastTotpTimeStepMatched = source.LastTotpTimeStepMatched,
+            PendingTotpSecretEncrypted = source.PendingTotpSecretEncrypted,
+            PendingTotpCreatedAtUtc = source.PendingTotpCreatedAtUtc,
+            LastTotpResetAtUtc = source.LastTotpResetAtUtc,
             CreatedAtUtc = source.CreatedAtUtc,
             UpdatedAtUtc = source.UpdatedAtUtc,
             LastLoginAtUtc = source.LastLoginAtUtc,

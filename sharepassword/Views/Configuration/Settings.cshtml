@@ -7,7 +7,7 @@
     <div>
         <div class="page-eyebrow">Administration</div>
         <h1 class="page-title">Settings</h1>
-        <p class="page-subtitle">Update runtime application settings that affect the admin UI and timestamp formatting.</p>
+        <p class="page-subtitle">Update runtime application settings by group.</p>
     </div>
 </div>
 
@@ -25,23 +25,61 @@
 }
 else
 {
-    <form method="post" class="surface-card form-section">
+    <form method="post" asp-action="SaveTimeZone" class="surface-card form-section">
         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="form-section__header">
+            <h2 class="surface-card__title">Time display</h2>
+            <p class="surface-card__subtitle mb-0">Controls how timestamps are shown in the admin interface.</p>
+        </div>
 
         <div class="field-grid">
             <div>
-                <label asp-for="TimeZoneId" class="form-label">Timezone</label>
-                <select asp-for="TimeZoneId" class="form-select">
-                    @foreach (var option in Model.AvailableTimeZones)
+                <label asp-for="TimeZone.TimeZoneId" class="form-label">Timezone</label>
+                <select asp-for="TimeZone.TimeZoneId" class="form-select">
+                    @foreach (var option in Model.TimeZone.AvailableTimeZones)
                     {
-                        <option value="@option.Id" selected="@(string.Equals(option.Id, Model.TimeZoneId, StringComparison.OrdinalIgnoreCase))">@option.DisplayName</option>
+                        <option value="@option.Id" selected="@(string.Equals(option.Id, Model.TimeZone.TimeZoneId, StringComparison.OrdinalIgnoreCase))">@option.DisplayName</option>
                     }
                 </select>
+                <span asp-validation-for="TimeZone.TimeZoneId" class="text-danger"></span>
             </div>
         </div>
 
         <div class="action-row">
-            <button type="submit" class="btn btn-primary">Save settings</button>
+            <button type="submit" class="btn btn-primary">Save time display</button>
         </div>
     </form>
+
+    <form method="post" asp-action="SaveShareAccessPause" class="surface-card form-section">
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="form-section__header">
+            <h2 class="surface-card__title">Share access pause</h2>
+            <p class="surface-card__subtitle mb-0">Controls how a specific share is paused after repeated failed access attempts.</p>
+        </div>
+
+        <div class="field-grid">
+            <div>
+                <label asp-for="ShareAccessPause.ShareAccessFailedAttemptLimit" class="form-label"></label>
+                <input asp-for="ShareAccessPause.ShareAccessFailedAttemptLimit" class="form-control" type="number" min="1" max="100" />
+                <div class="form-text mt-1">Pause a specific share after this many failed email or access-code attempts.</div>
+                <span asp-validation-for="ShareAccessPause.ShareAccessFailedAttemptLimit" class="text-danger"></span>
+            </div>
+            <div>
+                <label asp-for="ShareAccessPause.ShareAccessPauseMinutes" class="form-label"></label>
+                <input asp-for="ShareAccessPause.ShareAccessPauseMinutes" class="form-control" type="number" min="1" max="1440" />
+                <div class="form-text mt-1">How long a paused share blocks additional access attempts.</div>
+                <span asp-validation-for="ShareAccessPause.ShareAccessPauseMinutes" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button type="submit" class="btn btn-primary">Save share access pause</button>
+        </div>
+    </form>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
 }

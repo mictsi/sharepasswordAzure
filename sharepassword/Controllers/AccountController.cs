@@ -104,17 +104,13 @@ public class AccountController : Controller
                 return View(model);
             }
 
-            await SignInLocalUserAsync(localAuthentication.User);
-            await _localUserService.RecordSuccessfulLoginAsync(localAuthentication.User.Id);
+            if (RequiresTotp(localAuthentication.User))
+            {
+                await SignInPendingTotpAsync(localAuthentication.User);
+                return RedirectToAction(HasConfirmedTotp(localAuthentication.User) ? nameof(Totp) : nameof(TotpSetup), new { returnUrl });
+            }
 
-            var isAdmin = localAuthentication.User.Roles.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Contains(_adminRoleName, StringComparer.OrdinalIgnoreCase);
-            var actorType = isAdmin ? "admin" : "user";
-            var operation = isAdmin ? "admin.login" : "user.login";
-            var metricKey = isAdmin ? DbUsageMetricsService.AdminLoginKey : DbUsageMetricsService.UserLoginKey;
-
-            await _auditLogger.LogAsync(actorType, localAuthentication.User.Username, operation, true);
-            await _usageMetricsService.RecordAsync(metricKey, actorType, localAuthentication.User.Username, details: "Local user sign-in succeeded.");
+            await CompleteLocalSignInAsync(localAuthentication.User);
 
             return RedirectToAction(nameof(PostLogin), new { returnUrl });
         }
@@ -150,6 +146,173 @@ public class AccountController : Controller
         await _usageMetricsService.RecordAsync(DbUsageMetricsService.AdminLoginKey, "admin", _adminAuthOptions.Username, details: "Configured admin sign-in succeeded.");
 
         return RedirectToAction(nameof(PostLogin), new { returnUrl });
+    }
+
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> Totp(string? returnUrl = null)
+    {
+        var pendingUserId = GetPendingTotpUserId();
+        if (pendingUserId is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
+        var user = await _localUserService.GetByIdAsync(pendingUserId.Value);
+        if (user is null || !HasConfirmedTotp(user))
+        {
+            return RedirectToAction(nameof(TotpSetup), new { returnUrl });
+        }
+
+        return View(new TotpVerificationViewModel { Username = user.Username });
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Totp(TotpVerificationViewModel model, string? returnUrl = null)
+    {
+        var pendingUserId = GetPendingTotpUserId();
+        if (pendingUserId is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
+        var user = await _localUserService.GetByIdAsync(pendingUserId.Value);
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
+        model.Username = user.Username;
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var result = await _localUserService.VerifyTotpAsync(user.Id, model.Code, user.Username);
+        if (!result.Succeeded || result.User is null)
+        {
+            await _auditLogger.LogAsync("admin", user.Username, "local-user.totp.verify", false, targetType: "LocalUser", targetId: user.Id.ToString(), details: result.ErrorMessage);
+            ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Invalid authenticator code.");
+            return View(model);
+        }
+
+        await CompleteLocalSignInAsync(result.User);
+        return RedirectToAction(nameof(PostLogin), new { returnUrl });
+    }
+
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> TotpSetup(string? returnUrl = null)
+    {
+        var pendingUserId = GetPendingTotpUserId();
+        var localUserId = pendingUserId ?? GetCurrentLocalUserId();
+        if (localUserId is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
+        if (pendingUserId.HasValue)
+        {
+            var pendingUser = await _localUserService.GetByIdAsync(pendingUserId.Value);
+            if (pendingUser is null)
+            {
+                return RedirectToAction(nameof(Login), new { returnUrl });
+            }
+
+            if (HasConfirmedTotp(pendingUser))
+            {
+                return RedirectToAction(nameof(Totp), new { returnUrl });
+            }
+        }
+
+        var result = await _localUserService.EnsureTotpSetupAsync(localUserId.Value, GetCurrentUserIdentifier());
+        if (!result.Succeeded || result.User is null || result.Setup is null)
+        {
+            TempData["StatusMessage"] = result.ErrorMessage ?? "Unable to start authenticator app setup.";
+            return RedirectToAction(nameof(Profile));
+        }
+
+        return View(new TotpSetupViewModel
+        {
+            Username = result.User.Username,
+            SecretKey = result.Setup.SecretKey,
+            ProvisioningUri = result.Setup.ProvisioningUri,
+            QrCodeSvg = result.Setup.QrCodeSvg,
+            IsConfirmed = HasConfirmedTotp(result.User),
+            IsReplacingExistingSetup = HasConfirmedTotp(result.User),
+            IsPendingLogin = pendingUserId.HasValue,
+            StatusMessage = TempData["StatusMessage"]?.ToString()
+        });
+    }
+
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TotpSetup(TotpSetupViewModel model, string? returnUrl = null)
+    {
+        var pendingUserId = GetPendingTotpUserId();
+        var localUserId = pendingUserId ?? GetCurrentLocalUserId();
+        if (localUserId is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl });
+        }
+
+        if (pendingUserId.HasValue)
+        {
+            var pendingUser = await _localUserService.GetByIdAsync(pendingUserId.Value);
+            if (pendingUser is null)
+            {
+                return RedirectToAction(nameof(Login), new { returnUrl });
+            }
+
+            if (HasConfirmedTotp(pendingUser))
+            {
+                return RedirectToAction(nameof(Totp), new { returnUrl });
+            }
+        }
+
+        var setupResult = await _localUserService.EnsureTotpSetupAsync(localUserId.Value, GetCurrentUserIdentifier());
+        if (!setupResult.Succeeded || setupResult.User is null || setupResult.Setup is null)
+        {
+            ModelState.AddModelError(string.Empty, setupResult.ErrorMessage ?? "Unable to load authenticator app setup.");
+            return View(model);
+        }
+
+        model.Username = setupResult.User.Username;
+        model.SecretKey = setupResult.Setup.SecretKey;
+        model.ProvisioningUri = setupResult.Setup.ProvisioningUri;
+        model.QrCodeSvg = setupResult.Setup.QrCodeSvg;
+        model.IsConfirmed = HasConfirmedTotp(setupResult.User);
+        model.IsReplacingExistingSetup = HasConfirmedTotp(setupResult.User);
+        model.IsPendingLogin = pendingUserId.HasValue;
+
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var confirmResult = await _localUserService.ConfirmTotpAsync(localUserId.Value, model.Code, GetCurrentUserIdentifier());
+        if (!confirmResult.Succeeded || confirmResult.User is null)
+        {
+            await _auditLogger.LogAsync(GetCurrentActorType(), model.Username, "local-user.totp.confirm", false, targetType: "LocalUser", targetId: localUserId.Value.ToString(), details: confirmResult.ErrorMessage);
+            ModelState.AddModelError(string.Empty, confirmResult.ErrorMessage ?? "Invalid authenticator code.");
+            return View(model);
+        }
+
+        await _auditLogger.LogAsync(GetCurrentActorType(), confirmResult.User.Username, "local-user.totp.confirm", true, targetType: "LocalUser", targetId: confirmResult.User.Id.ToString());
+
+        if (GetPendingTotpUserId().HasValue)
+        {
+            await CompleteLocalSignInAsync(confirmResult.User);
+            return RedirectToAction(nameof(PostLogin), new { returnUrl });
+        }
+
+        TempData["StatusMessage"] = model.IsReplacingExistingSetup
+            ? "Authenticator app setup changed."
+            : "Authenticator app setup confirmed.";
+        return RedirectToAction(nameof(Profile));
     }
 
     [Authorize]
@@ -334,6 +497,40 @@ public class AccountController : Controller
             });
     }
 
+    private async Task SignInPendingTotpAsync(LocalUser user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, user.Username),
+            new("pending_totp_user_id", user.Id.ToString()),
+            new("auth_source", "local-totp-pending")
+        };
+
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = false
+            });
+    }
+
+    private async Task CompleteLocalSignInAsync(LocalUser user)
+    {
+        await SignInLocalUserAsync(user);
+        await _localUserService.RecordSuccessfulLoginAsync(user.Id);
+
+        var isAdmin = user.Roles.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Contains(_adminRoleName, StringComparer.OrdinalIgnoreCase);
+        var actorType = isAdmin ? "admin" : "user";
+        var operation = isAdmin ? "admin.login" : "user.login";
+        var metricKey = isAdmin ? DbUsageMetricsService.AdminLoginKey : DbUsageMetricsService.UserLoginKey;
+
+        await _auditLogger.LogAsync(actorType, user.Username, operation, true);
+        await _usageMetricsService.RecordAsync(metricKey, actorType, user.Username, details: "Local user sign-in succeeded.");
+    }
+
     private async Task<ProfileViewModel> BuildProfileViewModelAsync()
     {
         var localUserId = GetCurrentLocalUserId();
@@ -358,6 +555,8 @@ public class AccountController : Controller
             Email = localUser?.Email ?? User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
             Roles = roles,
             IsLocalAccount = localUser is not null,
+            IsTotpRequired = localUser?.IsTotpRequired ?? false,
+            IsTotpConfigured = localUser is not null && HasConfirmedTotp(localUser),
             LastLoginAtUtc = localUser?.LastLoginAtUtc,
             LastShareCreatedAtUtc = localUser?.LastShareCreatedAtUtc,
             LastPasswordResetAtUtc = localUser?.LastPasswordResetAtUtc,
@@ -371,6 +570,22 @@ public class AccountController : Controller
     {
         var raw = User.FindFirstValue("local_user_id") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
         return Guid.TryParse(raw, out var localUserId) ? localUserId : null;
+    }
+
+    private Guid? GetPendingTotpUserId()
+    {
+        var raw = User.FindFirstValue("pending_totp_user_id");
+        return Guid.TryParse(raw, out var localUserId) ? localUserId : null;
+    }
+
+    private static bool RequiresTotp(LocalUser user)
+    {
+        return user.IsTotpRequired || HasConfirmedTotp(user);
+    }
+
+    private static bool HasConfirmedTotp(LocalUser user)
+    {
+        return !string.IsNullOrWhiteSpace(user.TotpSecretEncrypted) && user.TotpConfirmedAtUtc is not null;
     }
 
     private string GetCurrentUserIdentifier()

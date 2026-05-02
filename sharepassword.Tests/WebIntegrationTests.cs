@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using OtpNet;
 using SharePassword.Models;
 using SharePassword.Services;
 
@@ -259,6 +260,7 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
                 new KeyValuePair<string, string>("DisplayName", "Local User"),
                 new KeyValuePair<string, string>("Email", $"{username}@example.com"),
                 new KeyValuePair<string, string>("SelectedRoles", "User"),
+                new KeyValuePair<string, string>("IsTotpRequired", "true"),
                 new KeyValuePair<string, string>("NewPassword", "LocalPassword!123"),
                 new KeyValuePair<string, string>("ConfirmPassword", "LocalPassword!123")
             ])
@@ -272,6 +274,11 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("User created.", html, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(username, html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("At least one built-in role must be selected.", html, StringComparison.OrdinalIgnoreCase);
+
+        var localUserService = _factory.Services.GetRequiredService<ILocalUserService>();
+        var createdUser = await localUserService.GetByUsernameAsync(username);
+        Assert.NotNull(createdUser);
+        Assert.True(createdUser.IsTotpRequired);
     }
 
     [Fact]
@@ -327,6 +334,244 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task LocalUser_WithRequiredTotp_CompletesAuthenticatorOnboardingBeforeSignIn()
+    {
+        await using var factory = new SqliteTestWebApplicationFactory();
+        var localUserService = factory.Services.GetRequiredService<ILocalUserService>();
+        var username = $"totp-required-{Guid.NewGuid():N}";
+        const string password = "TotpRequired!123";
+
+        var createResult = await localUserService.CreateAsync(new LocalUserUpsertRequest
+        {
+            Username = username,
+            DisplayName = "TOTP Required User",
+            Email = $"{username}@example.com",
+            Roles = ["User"],
+            Password = password,
+            IsTotpRequired = true
+        }, TestAdminAuth.Username);
+
+        Assert.True(createResult.Succeeded, createResult.ErrorMessage);
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        var loginPage = await client.GetStringAsync("/account/login");
+        var antiForgery = ExtractAntiForgeryToken(loginPage);
+        var loginResponse = await client.PostAsync("/account/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiForgery,
+            ["Username"] = username,
+            ["Password"] = password
+        }));
+        var setupHtml = await loginResponse.Content.ReadAsStringAsync();
+
+        loginResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Authenticator app setup", setupHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<svg", setupHtml, StringComparison.OrdinalIgnoreCase);
+
+        var manualKey = ExtractTotpManualKey(setupHtml);
+        var setupCode = ComputeTotpCode(manualKey);
+        var setupAntiForgery = ExtractAntiForgeryToken(setupHtml);
+
+        var setupResponse = await client.PostAsync("/account/totpsetup", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = setupAntiForgery,
+            ["Code"] = setupCode
+        }));
+        var dashboardHtml = await setupResponse.Content.ReadAsStringAsync();
+
+        setupResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Password shares", dashboardHtml, StringComparison.OrdinalIgnoreCase);
+
+        var configuredUser = await localUserService.GetByIdAsync(createResult.User!.Id);
+        Assert.NotNull(configuredUser);
+        Assert.NotNull(configuredUser.TotpConfirmedAtUtc);
+        Assert.False(string.IsNullOrWhiteSpace(configuredUser.TotpSecretEncrypted));
+        Assert.NotEqual(manualKey, configuredUser.TotpSecretEncrypted);
+    }
+
+    [Fact]
+    public async Task TotpSetup_AfterConfirmation_ShowsReplacementSetupWithoutRevealingCurrentSecret()
+    {
+        await using var factory = new SqliteTestWebApplicationFactory();
+        var localUserService = factory.Services.GetRequiredService<ILocalUserService>();
+        var passwordCryptoService = factory.Services.GetRequiredService<IPasswordCryptoService>();
+        var username = $"totp-change-{Guid.NewGuid():N}";
+        const string password = "TotpChange!123";
+
+        var createResult = await localUserService.CreateAsync(new LocalUserUpsertRequest
+        {
+            Username = username,
+            DisplayName = "TOTP Change User",
+            Email = $"{username}@example.com",
+            Roles = ["User"],
+            Password = password,
+            IsTotpRequired = true
+        }, TestAdminAuth.Username);
+
+        Assert.True(createResult.Succeeded, createResult.ErrorMessage);
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        var initialSetupHtml = await LoginLocalUserAndFollowToHtmlAsync(client, username, password);
+        var originalManualKey = ExtractTotpManualKey(initialSetupHtml);
+        var initialSetupResponse = await client.PostAsync("/account/totpsetup", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiForgeryToken(initialSetupHtml),
+            ["Code"] = ComputeTotpCode(originalManualKey)
+        }));
+
+        initialSetupResponse.EnsureSuccessStatusCode();
+
+        var replacementHtml = await client.GetStringAsync("/account/totpsetup");
+        var replacementManualKey = ExtractTotpManualKey(replacementHtml);
+
+        Assert.Contains("Change authenticator app", replacementHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(originalManualKey, replacementHtml, StringComparison.Ordinal);
+        Assert.NotEqual(originalManualKey, replacementManualKey);
+
+        var userWithPendingReplacement = await localUserService.GetByIdAsync(createResult.User!.Id);
+        Assert.NotNull(userWithPendingReplacement);
+        Assert.Equal(originalManualKey, passwordCryptoService.Decrypt(userWithPendingReplacement.TotpSecretEncrypted));
+        Assert.Equal(replacementManualKey, passwordCryptoService.Decrypt(userWithPendingReplacement.PendingTotpSecretEncrypted));
+
+        var replacementResponse = await client.PostAsync("/account/totpsetup", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiForgeryToken(replacementHtml),
+            ["Code"] = ComputeTotpCode(replacementManualKey)
+        }));
+        var replacementResponseHtml = await replacementResponse.Content.ReadAsStringAsync();
+
+        replacementResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Authenticator app setup changed.", replacementResponseHtml, StringComparison.OrdinalIgnoreCase);
+
+        var reloadedUser = await localUserService.GetByIdAsync(createResult.User.Id);
+        Assert.NotNull(reloadedUser);
+        Assert.Equal(replacementManualKey, passwordCryptoService.Decrypt(reloadedUser.TotpSecretEncrypted));
+        Assert.Equal(string.Empty, reloadedUser.PendingTotpSecretEncrypted);
+        Assert.NotEqual(originalManualKey, passwordCryptoService.Decrypt(reloadedUser.TotpSecretEncrypted));
+    }
+
+    [Fact]
+    public async Task TotpSetup_DuringPendingLogin_WithConfirmedTotp_RedirectsToVerification()
+    {
+        await using var factory = new SqliteTestWebApplicationFactory();
+        var localUserService = factory.Services.GetRequiredService<ILocalUserService>();
+        var username = $"totp-pending-{Guid.NewGuid():N}";
+        const string password = "TotpPending!123";
+
+        var createResult = await localUserService.CreateAsync(new LocalUserUpsertRequest
+        {
+            Username = username,
+            DisplayName = "TOTP Pending User",
+            Email = $"{username}@example.com",
+            Roles = ["User"],
+            Password = password,
+            IsTotpRequired = true
+        }, TestAdminAuth.Username);
+
+        Assert.True(createResult.Succeeded, createResult.ErrorMessage);
+
+        var setupResult = await localUserService.EnsureTotpSetupAsync(createResult.User!.Id, TestAdminAuth.Username);
+        Assert.True(setupResult.Succeeded, setupResult.ErrorMessage);
+        Assert.NotNull(setupResult.Setup);
+
+        var confirmResult = await localUserService.ConfirmTotpAsync(createResult.User.Id, ComputeTotpCode(setupResult.Setup.SecretKey), TestAdminAuth.Username);
+        Assert.True(confirmResult.Succeeded, confirmResult.ErrorMessage);
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        var loginPage = await client.GetStringAsync("/account/login");
+        var loginResponse = await client.PostAsync("/account/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiForgeryToken(loginPage),
+            ["Username"] = username,
+            ["Password"] = password
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+        Assert.Contains("/Account/Totp", loginResponse.Headers.Location?.OriginalString ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var setupAttempt = await client.GetAsync("/account/totpsetup");
+
+        Assert.Equal(HttpStatusCode.Redirect, setupAttempt.StatusCode);
+        Assert.Contains("/Account/Totp", setupAttempt.Headers.Location?.OriginalString ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UsersRemoveTotp_ClearsLocalUserAuthenticatorSetup()
+    {
+        await using var factory = new SqliteTestWebApplicationFactory();
+        var localUserService = factory.Services.GetRequiredService<ILocalUserService>();
+        var username = $"totp-reset-{Guid.NewGuid():N}";
+
+        var createResult = await localUserService.CreateAsync(new LocalUserUpsertRequest
+        {
+            Username = username,
+            DisplayName = "TOTP Reset User",
+            Email = $"{username}@example.com",
+            Roles = ["User"],
+            Password = "TotpReset!123",
+            IsTotpRequired = true
+        }, TestAdminAuth.Username);
+
+        Assert.True(createResult.Succeeded, createResult.ErrorMessage);
+
+        var setupResult = await localUserService.EnsureTotpSetupAsync(createResult.User!.Id, TestAdminAuth.Username);
+        Assert.True(setupResult.Succeeded, setupResult.ErrorMessage);
+        Assert.NotNull(setupResult.Setup);
+
+        var confirmResult = await localUserService.ConfirmTotpAsync(createResult.User.Id, ComputeTotpCode(setupResult.Setup.SecretKey), TestAdminAuth.Username);
+        Assert.True(confirmResult.Succeeded, confirmResult.ErrorMessage);
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        await LoginAsAdminAsync(client);
+
+        var editPage = await client.GetStringAsync($"/users/edit/{createResult.User.Id}");
+        Assert.Contains("Authenticator app", editPage, StringComparison.OrdinalIgnoreCase);
+        var antiForgery = ExtractAntiForgeryToken(editPage);
+
+        var resetResponse = await client.PostAsync($"/users/removetotp/{createResult.User.Id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiForgery
+        }));
+        var resetHtml = await resetResponse.Content.ReadAsStringAsync();
+
+        resetResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Authenticator app setup reset.", resetHtml, StringComparison.OrdinalIgnoreCase);
+
+        var reloaded = await localUserService.GetByIdAsync(createResult.User.Id);
+        Assert.NotNull(reloaded);
+        Assert.Equal(string.Empty, reloaded.TotpSecretEncrypted);
+        Assert.Null(reloaded.TotpConfirmedAtUtc);
+        Assert.Null(reloaded.LastTotpTimeStepMatched);
+        Assert.Equal(string.Empty, reloaded.PendingTotpSecretEncrypted);
+        Assert.Null(reloaded.PendingTotpCreatedAtUtc);
+        Assert.True(reloaded.IsTotpRequired);
+    }
+
+    [Fact]
     public async Task Get_Health_ReturnsSuccess()
     {
         using var client = CreateClient();
@@ -354,6 +599,64 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("Shared Credentials", accessHtml, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(sharedUsername, accessHtml, StringComparison.Ordinal);
         Assert.Contains(sharedPassword, accessHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ShareAccess_FailedAttemptsPauseOnlyThatShare_UsingConfiguredSettings()
+    {
+        await using var factory = new SqliteTestWebApplicationFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = true
+        });
+
+        await LoginAsAdminAsync(client);
+
+        var settingsPage = await client.GetStringAsync("/configuration/settings");
+        Assert.Contains("ShareAccessFailedAttemptLimit", settingsPage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ShareAccessPauseMinutes", settingsPage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Save time display", settingsPage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Save share access pause", settingsPage, StringComparison.OrdinalIgnoreCase);
+        var settingsAntiForgery = ExtractAntiForgeryToken(settingsPage);
+
+        var settingsResponse = await client.PostAsync("/configuration/saveshareaccesspause", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = settingsAntiForgery,
+            ["ShareAccessPause.ShareAccessFailedAttemptLimit"] = "2",
+            ["ShareAccessPause.ShareAccessPauseMinutes"] = "5"
+        }));
+        var settingsHtml = await settingsResponse.Content.ReadAsStringAsync();
+
+        settingsResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Share access pause settings saved.", settingsHtml, StringComparison.OrdinalIgnoreCase);
+
+        var recipientEmail = $"recipient-{Guid.NewGuid():N}@example.com";
+        var created = await CreateShareAsync(client, recipientEmail, "locked.share", "LockedSharePassword!123");
+        var wrongCode = string.Equals(created.AccessCode, "AAAAAAAAAA", StringComparison.Ordinal) ? "BBBBBBBBBB" : "AAAAAAAAAA";
+
+        var firstFailure = await AccessShareAsync(client, created.SharePath, recipientEmail, wrongCode);
+        var firstFailureHtml = await firstFailure.Content.ReadAsStringAsync();
+        firstFailure.EnsureSuccessStatusCode();
+        Assert.Contains("Invalid link or access details.", firstFailureHtml, StringComparison.OrdinalIgnoreCase);
+
+        var secondFailure = await AccessShareAsync(client, created.SharePath, recipientEmail, wrongCode);
+        var secondFailureHtml = await secondFailure.Content.ReadAsStringAsync();
+        secondFailure.EnsureSuccessStatusCode();
+        Assert.Contains("Too many failed attempts for this share.", secondFailureHtml, StringComparison.OrdinalIgnoreCase);
+
+        var blockedSuccess = await AccessShareAsync(client, created.SharePath, recipientEmail, created.AccessCode);
+        var blockedSuccessHtml = await blockedSuccess.Content.ReadAsStringAsync();
+        blockedSuccess.EnsureSuccessStatusCode();
+        Assert.Contains("Too many failed attempts for this share.", blockedSuccessHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("LockedSharePassword!123", blockedSuccessHtml, StringComparison.Ordinal);
+
+        var shareStore = factory.Services.GetRequiredService<IShareStore>();
+        var lockedShare = await shareStore.GetShareByTokenAsync(ExtractShareTokenFromPath(created.SharePath));
+        Assert.NotNull(lockedShare);
+        Assert.Equal(2, lockedShare.FailedAccessAttempts);
+        Assert.NotNull(lockedShare.AccessPausedUntilUtc);
     }
 
     [Fact]
@@ -590,6 +893,20 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
     }
 
+    private static async Task<string> LoginLocalUserAndFollowToHtmlAsync(HttpClient client, string username, string password)
+    {
+        var loginPage = await client.GetStringAsync("/account/login");
+        var loginResponse = await client.PostAsync("/account/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiForgeryToken(loginPage),
+            ["Username"] = username,
+            ["Password"] = password
+        }));
+
+        loginResponse.EnsureSuccessStatusCode();
+        return await loginResponse.Content.ReadAsStringAsync();
+    }
+
     private static async Task<(string SharePath, string AccessCode)> CreateShareAsync(
         HttpClient client,
         string recipientEmail,
@@ -712,6 +1029,33 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         }
 
         return match.Groups["id"].Value;
+    }
+
+    private static string ExtractTotpManualKey(string html)
+    {
+        var match = Regex.Match(html, "<label class=\"form-label\">Manual key</label>\\s*<input[^>]*value=\"(?<key>[A-Z2-7=]+)\"", RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            throw new InvalidOperationException("TOTP manual key not found in setup page.");
+        }
+
+        return WebUtility.HtmlDecode(match.Groups["key"].Value);
+    }
+
+    private static string ComputeTotpCode(string secretKey)
+    {
+        return new Totp(Base32Encoding.ToBytes(secretKey)).ComputeTotp();
+    }
+
+    private static string ExtractShareTokenFromPath(string sharePath)
+    {
+        var index = sharePath.LastIndexOf('/');
+        if (index < 0 || index == sharePath.Length - 1)
+        {
+            throw new InvalidOperationException("Share token not found in share path.");
+        }
+
+        return sharePath[(index + 1)..];
     }
 
     private static string CombineAppPath(string pathBase, string path)
@@ -920,7 +1264,9 @@ internal sealed class InMemoryShareStore : IShareStore
             ExpiresAtUtc = share.ExpiresAtUtc,
             LastAccessedAtUtc = share.LastAccessedAtUtc,
             CreatedBy = share.CreatedBy,
-            RequireOidcLogin = share.RequireOidcLogin
+            RequireOidcLogin = share.RequireOidcLogin,
+            FailedAccessAttempts = share.FailedAccessAttempts,
+            AccessPausedUntilUtc = share.AccessPausedUntilUtc
         };
     }
 }

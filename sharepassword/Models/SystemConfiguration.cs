@@ -16,6 +16,8 @@ public class SystemConfiguration
     public bool NotifyCreatorOnShareAccess { get; set; } = true;
     public string ShareAccessedSubjectTemplate { get; set; } = string.Empty;
     public string ShareAccessedBodyTemplate { get; set; } = string.Empty;
+    public int ShareAccessFailedAttemptLimit { get; set; } = 5;
+    public int ShareAccessPauseMinutes { get; set; } = 15;
     public DateTime UpdatedAtUtc { get; set; }
     public string UpdatedBy { get; set; } = string.Empty;
 }
