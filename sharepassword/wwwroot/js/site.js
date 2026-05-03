@@ -86,6 +86,23 @@
 			return;
 		}
 
+		const passwordToggle = event.target.closest("[data-password-toggle]");
+		if (passwordToggle) {
+			event.preventDefault();
+			const inputId = passwordToggle.getAttribute("data-password-toggle");
+			const input = inputId ? document.getElementById(inputId) : null;
+			if (!input || !("type" in input)) {
+				return;
+			}
+
+			const shouldShow = input.type === "password";
+			input.type = shouldShow ? "text" : "password";
+			passwordToggle.classList.toggle("is-visible", shouldShow);
+			passwordToggle.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
+			passwordToggle.setAttribute("aria-pressed", shouldShow ? "true" : "false");
+			return;
+		}
+
 		const secretToggle = event.target.closest("[data-secret-toggle]");
 		if (secretToggle) {
 			event.preventDefault();

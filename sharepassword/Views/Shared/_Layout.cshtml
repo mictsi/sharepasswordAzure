@@ -47,20 +47,12 @@
                 {
                     <div class="app-brand" aria-label="SharePassword secure sharing">
                         <img src="~/images/logo.png" alt="SharePassword logo" class="app-brand__logo" />
-                        <span>
-                            <span class="app-brand__name">SharePassword</span>
-                            <span class="app-brand__tag">Secure one-time credential delivery</span>
-                        </span>
                     </div>
                 }
                 else
                 {
                     <a class="app-brand" asp-area="" asp-controller="Account" asp-action="@(isAdminShell ? "PostLogin" : "Login")" aria-label="SharePassword home">
                         <img src="~/images/logo.png" alt="SharePassword logo" class="app-brand__logo" />
-                        <span>
-                            <span class="app-brand__name">SharePassword</span>
-                            <span class="app-brand__tag">Secure one-time credential delivery</span>
-                        </span>
                     </a>
                 }
             </div>

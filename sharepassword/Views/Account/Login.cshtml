@@ -4,34 +4,79 @@
     var oidcEnabled = (bool?)ViewData["OidcEnabled"] == true;
 }
 
-<section class="auth-card">
-    <div class="page-eyebrow">Admin</div>
-    <h1 class="page-title">Admin login</h1>
-    <p class="page-subtitle">Sign in to manage password shares.</p>
+<section class="login-page">
 
-    @if (oidcEnabled)
-    {
-        <div class="inline-actions mb-3">
-            <a class="btn btn-outline-secondary" asp-action="ExternalLogin">Sign in with Microsoft Entra ID</a>
-        </div>
-    }
 
-    <form asp-action="Login" method="post">
-        <div asp-validation-summary="ModelOnly" class="alert alert-danger app-validation-summary" role="alert"></div>
-        <div class="mb-3">
-            <label asp-for="Username" class="form-label"></label>
-            <input asp-for="Username" class="form-control" autocomplete="username" />
-            <span asp-validation-for="Username" class="text-danger"></span>
+    <section class="auth-card auth-card--login" aria-labelledby="login-title">
+        <h1 id="login-title" class="visually-hidden">Admin login</h1>
+        
+        <div class="login-brand" aria-label="SharePassword secure sharing">
+            <span class="login-brand__mark" aria-hidden="true">
+                <img src="~/images/logo.png" alt="" class="login-brand__logo" />
+            </span>
         </div>
-        <div class="mb-3">
-            <label asp-for="Password" class="form-label"></label>
-            <input asp-for="Password" class="form-control" autocomplete="current-password" />
-            <span asp-validation-for="Password" class="text-danger"></span>
-        </div>
-        <button type="submit" class="btn btn-primary">Login</button>
-    </form>
-</section>
+    
+        <div class="login-card__body">
 
-@section Scripts {
-    <partial name="_ValidationScriptsPartial" />
-}
+            <p class="login-card__subtitle">Welcome back! Sign in to securely manage password shares and access the
+                admin dashboard.</p>
+
+                @if (oidcEnabled)
+                {
+                    <div class="login-card__oidc">
+                        <a class="btn btn-outline-secondary login-card__oidc-button" asp-action="ExternalLogin">Sign in with
+                            Microsoft Entra ID</a>
+                        </div>
+                    }
+
+                    <form asp-action="Login" method="post" class="login-form">
+                        <div asp-validation-summary="ModelOnly" class="alert alert-danger app-validation-summary" role="alert">
+                        </div>
+
+                        <div class="login-form__field">
+                            <label asp-for="Username" class="login-form__label"></label>
+                            <div class="login-input-shell">
+                                <span class="login-input-shell__icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" role="img" focusable="false">
+                                        <path d="M20 21a8 8 0 0 0-16 0" />
+                                        <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                </span>
+                                <input asp-for="Username" class="form-control login-form__input" autocomplete="username"
+                                       placeholder="Enter your username" />
+                            </div>
+                            <span asp-validation-for="Username" class="text-danger"></span>
+                        </div>
+
+                        <div class="login-form__field">
+                            <label asp-for="Password" class="login-form__label"></label>
+                            <div class="login-input-shell">
+                                <span class="login-input-shell__icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" role="img" focusable="false">
+                                        <rect x="5" y="11" width="14" height="10" rx="2" />
+                                        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                                        <path d="M12 15v2" />
+                                    </svg>
+                                </span>
+                                <input asp-for="Password" class="form-control login-form__input login-form__input--password"
+                                       autocomplete="current-password" placeholder="Enter your password" />
+                                <button type="button" class="login-password-toggle" data-password-toggle="Password"
+                                        aria-label="Show password" aria-pressed="false">
+                                    <svg viewBox="0 0 24 24" role="img" focusable="false" aria-hidden="true">
+                                        <path d="M2.1 12S5.4 5 12 5s9.9 7 9.9 7-3.3 7-9.9 7-9.9-7-9.9-7Z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <span asp-validation-for="Password" class="text-danger"></span>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary login-form__submit">Login</button>
+                    </form>
+                </div>
+            </section>
+        </section>
+
+        @section Scripts {
+            <partial name="_ValidationScriptsPartial" />
+        }

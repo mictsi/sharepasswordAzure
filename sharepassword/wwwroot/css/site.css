@@ -29,45 +29,25 @@ html {
   position: relative;
   min-height: 100%;
 }
+    justify-content: center;
 
 body {
   margin: 0;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  color: var(--sp-text);
-  background:
-    radial-gradient(circle at top left, rgba(31, 95, 191, 0.16), transparent 22rem),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 24rem),
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: min(100%, 18rem);
     linear-gradient(180deg, #f6fbff 0%, var(--sp-bg) 100%);
   font-family: var(--sp-font-body);
   line-height: 1.55;
-}
-
-a {
-  color: var(--sp-primary);
+    display: block;
+    width: min(100%, 18rem);
+    height: auto;
+    max-width: none;
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.14em;
 }
-
-a:hover {
-  color: var(--sp-primary-hover);
-}
-
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-.btn:focus-visible,
-.form-control:focus-visible,
-.form-select:focus-visible,
-.form-check-input:focus-visible {
-  outline: 3px solid rgba(31, 95, 191, 0.22);
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
 .page-shell--admin .app-chrome {
   background: linear-gradient(180deg, rgba(10, 25, 47, 0.94), rgba(16, 32, 51, 0.88));
   border-bottom: 1px solid rgba(191, 208, 230, 0.18);
@@ -102,36 +82,23 @@ select:focus-visible,
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.9rem;
-  padding: 1.15rem 0;
+  padding: 0.85rem 0;
   color: inherit;
   text-decoration: none;
 }
 
 .app-brand__logo {
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 0.85rem;
-  box-shadow: var(--sp-shadow-sm);
+  display: block;
+  width: 4.25rem;
+  height: 4.25rem;
+  object-fit: cover;
+  object-position: center 35%;
+  border-radius: 1.2rem;
+  box-shadow: var(--sp-shadow-md);
   background: rgba(255, 255, 255, 0.88);
 }
 
-.app-brand__name {
-  display: block;
-  font-family: var(--sp-font-display);
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.app-brand__tag {
-  display: block;
-  color: var(--sp-text-muted);
-  font-size: 0.88rem;
-}
-
 .page-shell--admin .app-brand,
-.page-shell--admin .app-brand__tag,
 .page-shell--admin .app-userbar__label,
 .page-shell--admin .app-userbar__value {
   color: #f8fbff;
@@ -905,6 +872,204 @@ textarea.form-control {
   margin: 0 auto;
 }
 
+body.action-login {
+  background:
+    linear-gradient(180deg, rgba(248, 252, 255, 0.92) 0%, rgba(232, 242, 252, 0.92) 100%),
+    radial-gradient(circle at 50% 0, rgba(31, 95, 191, 0.14), transparent 32rem);
+}
+
+.action-login .app-chrome,
+.action-login .app-footer {
+  display: none;
+}
+
+.action-login .app-shell__body {
+  padding: 2.75rem 0 3rem;
+}
+
+.action-login .app-stage.app-width--auth {
+  width: min(100% - 2rem, 860px);
+  gap: 2rem;
+}
+
+.login-page {
+  width: 100%;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.login-brand__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 22rem);
+}
+
+.login-brand__logo {
+  display: block;
+  width: min(100%, 22rem);
+  height: auto;
+  max-width: none;
+}
+
+.action-login .auth-card--login {
+  padding: 0;
+  overflow: hidden;
+  border-color: #d4dfed;
+  border-radius: 1.7rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 28px 70px rgba(15, 47, 82, 0.14);
+}
+
+.login-card__body {
+  padding: 3.25rem 3.65rem 2.75rem;
+}
+
+.login-card__eyebrow {
+  margin-bottom: 0.7rem;
+  color: #1765cc;
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+}
+
+.login-card__title {
+  margin: 0;
+  font-family: var(--sp-font-display);
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0;
+  color: #07142b;
+}
+
+.login-card__subtitle {
+  max-width: 34rem;
+  margin: 1.25rem 0 2rem;
+  color: #556688;
+  font-size: 1.24rem;
+  line-height: 1.48;
+}
+
+.login-card__oidc {
+  margin: -0.35rem 0 1.6rem;
+}
+
+.login-card__oidc-button {
+  width: 100%;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.login-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.login-form__label {
+  color: #09152c;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.login-input-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-input-shell__icon,
+.login-password-toggle {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7b8baa;
+}
+
+.login-input-shell__icon {
+  left: 1.35rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  pointer-events: none;
+}
+
+.login-input-shell__icon svg,
+.login-password-toggle svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.login-form__input::placeholder {
+  color: #7d8cac;
+  opacity: 1;
+}
+
+.login-form__input.form-control {
+  min-height: 4.4rem;
+  padding: 0.9rem 1.25rem 0.9rem 4.65rem;
+  border-color: #c5d4e8;
+  border-radius: 0.95rem;
+  font-size: 1.08rem;
+  color: #0f1f35;
+  box-shadow: none;
+}
+
+.login-form__input.form-control:focus {
+  border-color: #8ab5f8;
+  box-shadow: 0 0 0 0.25rem rgba(42, 111, 216, 0.12);
+}
+
+.login-form__input--password.form-control {
+  padding-right: 4.45rem;
+}
+
+.login-password-toggle {
+  right: 1.2rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.login-password-toggle:hover,
+.login-password-toggle:focus-visible {
+  color: var(--sp-primary);
+}
+
+.login-form__submit.btn {
+  min-height: 4.5rem;
+  margin-top: 0.25rem;
+  border-radius: 0.95rem;
+  background: linear-gradient(180deg, #2a6fd8 0%, #1659bf 100%);
+  border-color: #1659bf;
+  font-size: 1.35rem;
+  box-shadow: 0 16px 30px rgba(22, 89, 191, 0.24);
+}
+
+.login-form__submit.btn:hover,
+.login-form__submit.btn:active {
+  background: linear-gradient(180deg, #1f63c8 0%, #114da7 100%);
+  border-color: #114da7;
+}
+
 .public-card__trust {
   margin-top: 1rem;
   color: var(--sp-text-muted);
@@ -1035,6 +1200,16 @@ textarea.form-control {
 }
 
 @media (max-width: 767.98px) {
+  .app-brand {
+    padding: 0.65rem 0;
+  }
+
+  .app-brand__logo {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 1rem;
+  }
+
   .app-shell__body {
     padding-top: 1.4rem;
   }
@@ -1091,4 +1266,75 @@ textarea.form-control {
   .surface-card {
     padding: 1.15rem;
   }
+
+  .action-login .app-shell__body {
+    padding: 1.35rem 0 2rem;
+  }
+
+  .action-login .app-stage.app-width--auth {
+    width: min(100% - 1.25rem, 860px);
+    gap: 1.25rem;
+  }
+
+  .login-brand {
+    margin-bottom: 1.35rem;
+  }
+
+  .login-brand__mark {
+    width: min(100%, 17rem);
+  }
+
+  .login-brand__logo {
+    width: min(100%, 17rem);
+  }
+
+  .action-login .auth-card--login {
+    padding: 0;
+    border-radius: 1.25rem;
+  }
+
+  .login-card__body {
+    padding: 2rem 1.25rem 1.75rem;
+  }
+
+  .login-card__title {
+    font-size: 2.35rem;
+  }
+
+  .login-card__subtitle {
+    margin: 0.85rem 0 1.45rem;
+    font-size: 1rem;
+  }
+
+  .login-form {
+    gap: 1rem;
+  }
+
+  .login-form__input.form-control {
+    min-height: 3.65rem;
+    padding-left: 3.85rem;
+    font-size: 1rem;
+  }
+
+  .login-form__input--password.form-control {
+    padding-right: 3.65rem;
+  }
+
+  .login-input-shell__icon {
+    left: 1rem;
+    width: 1.55rem;
+    height: 1.55rem;
+  }
+
+  .login-password-toggle {
+    right: 0.95rem;
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .login-form__submit.btn {
+    min-height: 3.75rem;
+    font-size: 1.08rem;
+  }
+
 }
