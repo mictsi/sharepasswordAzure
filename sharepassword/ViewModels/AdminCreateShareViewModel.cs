@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using SharePassword.Models;
 
 namespace SharePassword.ViewModels;
 
@@ -15,11 +16,16 @@ public class AdminCreateShareViewModel
     [Display(Name = "Username")]
     public string SharedUsername { get; set; } = string.Empty;
 
-    [Required]
     [StringLength(1000, ErrorMessage = "Password or secret cannot exceed 1000 characters.")]
     [DataType(DataType.MultilineText)]
     [Display(Name = "Password or secret")]
     public string Password { get; set; } = string.Empty;
+
+    [Display(Name = "Protect with extra password")]
+    public bool UseClientEncryption { get; set; }
+
+    [StringLength(ClientEncryptedSecretPayload.MaxPayloadLength, ErrorMessage = "Encrypted secret payload cannot exceed 12000 characters.")]
+    public string ClientEncryptedPasswordPayload { get; set; } = string.Empty;
 
     [StringLength(1000, ErrorMessage = "Instructions cannot exceed 1000 characters.")]
     [DataType(DataType.MultilineText)]

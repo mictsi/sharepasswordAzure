@@ -243,13 +243,18 @@ public class ShareController : Controller
             await _auditLogger.LogAsync("system", "mail-service", "mail.share-access.failed", false, "PasswordShare", share.Id.ToString(), ex.GetBaseException().Message);
         }
 
-        var decryptedPassword = _passwordCryptoService.Decrypt(share.EncryptedPassword);
+        var secretEncryptionMode = SecretEncryptionModes.Normalize(share.SecretEncryptionMode);
+        var secretPayload = SecretEncryptionModes.IsClientEncrypted(secretEncryptionMode)
+            ? share.EncryptedPassword
+            : _passwordCryptoService.Decrypt(share.EncryptedPassword);
+
         return View("Credential", new ShareCredentialViewModel
         {
             ShareId = share.Id,
             RecipientEmail = email,
             Username = share.SharedUsername,
-            Password = decryptedPassword,
+            Password = secretPayload,
+            SecretEncryptionMode = secretEncryptionMode,
             Instructions = share.Instructions,
             ExpiresAtUtc = share.ExpiresAtUtc
         });

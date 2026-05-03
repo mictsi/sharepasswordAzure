@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
@@ -281,6 +282,119 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.DoesNotContain("disabled=", input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Require the signed-in Microsoft Entra ID account to match the recipient email before the access code can be used.", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AdminCreate_LoadsJQueryCompatibilityBeforeUnobtrusiveValidation()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var html = await client.GetStringAsync("/admin/create");
+        var compatibilityScriptIndex = html.IndexOf("/js/jquery-compat.js", StringComparison.OrdinalIgnoreCase);
+        var unobtrusiveScriptIndex = html.IndexOf("/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js", StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(compatibilityScriptIndex >= 0, "jQuery compatibility script was not rendered.");
+        Assert.True(unobtrusiveScriptIndex >= 0, "jQuery unobtrusive validation script was not rendered.");
+        Assert.True(compatibilityScriptIndex < unobtrusiveScriptIndex, "jQuery compatibility script must load before unobtrusive validation.");
+    }
+
+    [Fact]
+    public async Task SecurityHeaders_AllowDataImagesForBootstrapFormControls()
+    {
+        using var client = CreateClient();
+
+        var response = await client.GetAsync("/account/login");
+
+        response.EnsureSuccessStatusCode();
+        Assert.True(response.Headers.TryGetValues("Content-Security-Policy", out var values));
+        Assert.Contains("img-src 'self' data:", values.Single(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AdminCreate_WithClientEncryptedPayload_StoresOpaqueSecret()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var recipientEmail = $"client-encrypted-{Guid.NewGuid():N}@example.com";
+        const string plaintextSecret = "ThisShouldNeverBeStoredByServer";
+        var encryptedPayload = CreateValidClientEncryptedPayload();
+        var createPage = await client.GetStringAsync("/admin/create");
+        var antiForgery = ExtractAntiForgeryToken(createPage);
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/admin/create")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgery,
+                ["RecipientEmail"] = recipientEmail,
+                ["SharedUsername"] = "client.encrypted.user",
+                ["Password"] = plaintextSecret,
+                ["UseClientEncryption"] = "true",
+                ["ClientEncryptedPasswordPayload"] = encryptedPayload,
+                ["ExpiryHours"] = "4"
+            })
+        };
+
+        createRequest.Headers.Referrer = new Uri("https://localhost/admin/create");
+        var createResponse = await client.SendAsync(createRequest);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+
+        createResponse.EnsureSuccessStatusCode();
+
+        var shareStore = _factory.Services.GetRequiredService<IShareStore>();
+        var share = (await shareStore.GetAllSharesAsync()).Single(x => x.RecipientEmail == recipientEmail);
+
+        Assert.Equal(SecretEncryptionModes.ClientAesGcm, share.SecretEncryptionMode);
+        Assert.Equal(encryptedPayload, share.EncryptedPassword);
+        Assert.DoesNotContain(plaintextSecret, share.EncryptedPassword, StringComparison.Ordinal);
+
+        var created = (ExtractSharePath(createHtml), ExtractAccessCode(createHtml));
+        var accessResponse = await AccessShareAsync(client, created.Item1, recipientEmail, created.Item2);
+        var credentialHtml = await accessResponse.Content.ReadAsStringAsync();
+
+        accessResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Decrypt secret", credentialHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Extra password required", credentialHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(plaintextSecret, credentialHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AdminCreate_WithClientEncryptionMissingPayload_RejectsShare()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var recipientEmail = $"client-encrypted-missing-{Guid.NewGuid():N}@example.com";
+        var createPage = await client.GetStringAsync("/admin/create");
+        var antiForgery = ExtractAntiForgeryToken(createPage);
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/admin/create")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgery,
+                ["RecipientEmail"] = recipientEmail,
+                ["SharedUsername"] = "client.encrypted.user",
+                ["Password"] = "RejectedPlaintextSecret",
+                ["UseClientEncryption"] = "true",
+                ["ExpiryHours"] = "4"
+            })
+        };
+
+        createRequest.Headers.Referrer = new Uri("https://localhost/admin/create");
+        var createResponse = await client.SendAsync(createRequest);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+
+        createResponse.EnsureSuccessStatusCode();
+        Assert.Contains("must be encrypted in your browser", createHtml, StringComparison.OrdinalIgnoreCase);
+
+        var shareStore = _factory.Services.GetRequiredService<IShareStore>();
+        var shares = await shareStore.GetAllSharesAsync();
+
+        Assert.DoesNotContain(shares, x => string.Equals(x.RecipientEmail, recipientEmail, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain("RejectedPlaintextSecret", createHtml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -681,6 +795,32 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task AdminDashboard_CurrentShares_RendersScalableMetadataList()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var recipientEmail = $"recipient-{Guid.NewGuid():N}@example.com";
+        const string sharedUsername = "dashboard.user";
+        await CreateShareAsync(client, recipientEmail, sharedUsername, "DashboardPassword!123");
+
+        var dashboardHtml = await client.GetStringAsync("/admin");
+
+        Assert.Contains("share-list", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("CREATED ON", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("EXPIRES ON", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("Created by", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("ACCESS MODE", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains(recipientEmail, dashboardHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(sharedUsername, dashboardHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("share-card-grid", dashboardHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Created (", dashboardHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Expires (", dashboardHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotMatch("data-label=\"CREATED ON\"[\\s\\S]*?share-list__value\">[^<]*UTC", dashboardHtml);
+        Assert.DoesNotMatch("data-label=\"EXPIRES ON\"[\\s\\S]*?share-list__value\">[^<]*UTC", dashboardHtml);
+    }
+
+    [Fact]
     public async Task AdminCanCreateShare_ExternalUserCanAccessWithEmailAndCode()
     {
         using var client = CreateClient();
@@ -1069,6 +1209,25 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         return WebUtility.HtmlDecode(match.Groups["value"].Value);
     }
 
+    private static string CreateValidClientEncryptedPayload()
+    {
+        return JsonSerializer.Serialize(new
+        {
+            version = ClientEncryptedSecretPayload.Version,
+            algorithm = ClientEncryptedSecretPayload.AlgorithmName,
+            kdf = ClientEncryptedSecretPayload.KdfName,
+            iterations = ClientEncryptedSecretPayload.KdfIterations,
+            salt = CreateBase64Bytes(16, 1),
+            nonce = CreateBase64Bytes(12, 2),
+            ciphertext = CreateBase64Bytes(32, 3)
+        });
+    }
+
+    private static string CreateBase64Bytes(int length, byte value)
+    {
+        return Convert.ToBase64String(Enumerable.Repeat(value, length).ToArray());
+    }
+
     private static string ExtractSharePath(string html)
     {
         var match = Regex.Match(html, "https?://[^/\"<>]+(?<path>/(?:[^\"<>/]+/)*s/[a-z0-9]+)");
@@ -1401,6 +1560,7 @@ internal sealed class InMemoryShareStore : IShareStore
             RecipientEmail = share.RecipientEmail,
             SharedUsername = share.SharedUsername,
             EncryptedPassword = share.EncryptedPassword,
+            SecretEncryptionMode = share.SecretEncryptionMode,
             Instructions = share.Instructions,
             AccessCodeHash = share.AccessCodeHash,
             AccessToken = share.AccessToken,

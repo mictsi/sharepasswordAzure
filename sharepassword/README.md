@@ -15,6 +15,7 @@ Secure password sharing for external users with:
 - Automatic expiration and cleanup (default 4 hours)
 - Optional authenticator app codes for local accounts
 - Per-share failed access attempt pause controls
+- Optional browser-side secret encryption with an extra password
 - Audit logging for admin, user, and system operations
 
 ## Run
@@ -197,6 +198,12 @@ The application settings page includes per-share lockout controls:
 - Pause duration in minutes
 
 Failed recipient email or access code attempts are counted against that specific share. After the threshold is reached, attempts for that share are paused until the configured time has elapsed; successful access clears the failed-attempt state.
+
+### Browser-side extra password protection
+
+When creating a share, enable `Protect with extra password` to encrypt the `Password or secret` field in the browser before the form is submitted. The app stores only the encrypted browser payload and the recipient must enter the extra password in their browser after normal link, email/OIDC, and access-code checks pass.
+
+The extra password is never sent to the server and is not recoverable. This protects stored secrets from database readers, backups, and application operators who cannot alter the delivered client code. It does not protect against an administrator who can change the JavaScript served to users; for that stronger threat model, serve the decrypting client from a separately trusted and integrity-controlled origin.
 
 ### Environment variables (Docker / Azure App Service)
 

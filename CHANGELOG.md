@@ -10,10 +10,18 @@ All notable changes to this project are documented in this file.
 - Added unified database persistence for both password shares and audit logs.
 - Added configurable `Storage:Backend` selection with per-backend config sections.
 - Restored Azure storage backend support using Key Vault for shares and Table Storage for audit logs.
+- Added optional browser-side secret encryption using an extra password, including create/retrieve UI and provider-specific schema metadata.
 
 ### Changed
 - Reworked `appsettings*.json` to use separate `SqliteStorage`, `SqlServerStorage`, `PostgresqlStorage`, and `AzureStorage` sections.
 - Updated deployment and configuration documentation for database-backed storage.
+
+### Fixed
+- Added a jQuery 4 compatibility shim for unobtrusive validation and allowed data images in CSP for Bootstrap form controls.
+- Reworked the admin dashboard's current-share layout so every share shows all metadata in a scalable list and uses `CREATED ON` / `EXPIRES ON` labels without repeating the timezone in each value.
+
+### Security
+- Client-encrypted shares store only opaque AES-GCM payloads on the server; the extra password is not submitted or persisted.
 
 ## [0.2.6] - 2026-02-25
 

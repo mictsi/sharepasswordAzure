@@ -5,7 +5,7 @@
     string FormatStamp(DateTime value)
     {
         var local = ApplicationTime.ConvertUtcToApplicationTime(value);
-        return $"{local:MMM dd, yyyy HH:mm} {ApplicationTime.TimeZoneId}";
+        return $"{local:MMM dd, yyyy HH:mm}";
     }
 }
 
@@ -121,99 +121,57 @@ else if (!Model.HasResults)
 }
 else
 {
-    <section class="surface-card">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <section class="current-shares">
+        <div class="surface-card current-shares__header">
             <h2 class="surface-card__title">Current shares</h2>
-            <p class="surface-card__subtitle mb-0">Showing @Model.Shares.Count of @Model.TotalVisibleShares shares.</p>
+            <p class="surface-card__subtitle">Showing @Model.Shares.Count of @Model.TotalVisibleShares shares. Time zone: @ApplicationTime.TimeZoneId.</p>
         </div>
 
-        <div class="table-wrap">
-            <table class="table data-table">
-                <thead>
-                    <tr>
-                        <th>Recipient</th>
-                        <th>Username</th>
-                        <th>Access mode</th>
-                        <th>Created (@ApplicationTime.TimeZoneId)</th>
-                        <th>Expires (@ApplicationTime.TimeZoneId)</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var item in Model.Shares)
-                    {
-                        <tr>
-                            <td>
-                                <div class="cell-primary">@item.RecipientEmail</div>
-                            </td>
-                            <td>
-                                <div class="cell-primary">@item.SharedUsername</div>
-                                <div class="cell-meta">Created by @item.CreatedBy</div>
-                                @if (item.HasBeenAccessed && item.LastAccessedAtUtc.HasValue)
-                                {
-                                    <div class="cell-meta">Opened @FormatStamp(item.LastAccessedAtUtc.Value)</div>
-                                }
-                            </td>
-                            <td>
-                                <span class="status-badge status-badge--@item.AccessModeTone">@item.AccessModeLabel</span>
-                            </td>
-                            <td>
-                                <div class="cell-primary">@FormatStamp(item.CreatedAtUtc)</div>
-                            </td>
-                            <td>
-                                <div class="cell-primary">@FormatStamp(item.ExpiresAtUtc)</div>
-                            </td>
-                            <td>
-                                <span class="status-badge status-badge--@item.StatusTone">@item.StatusLabel</span>
-                            </td>
-                            <td>
-                                <form asp-action="Revoke" method="post" data-confirm="Revoke this share? The link and access code will stop working immediately.">
-                                    <input type="hidden" name="id" value="@item.Id" />
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Revoke</button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <div class="surface-card share-list" role="list">
+            <div class="share-list__head" aria-hidden="true">
+                <span>Share</span>
+                <span>Access mode</span>
+                <span>CREATED ON</span>
+                <span>EXPIRES ON</span>
+                <span>Status</span>
+                <span></span>
+            </div>
 
-        <div class="share-list-mobile">
-            <div class="stack-list">
-                @foreach (var item in Model.Shares)
-                {
-                    <article class="surface-card stack-card">
-                        <div class="d-flex justify-content-between align-items-start gap-3">
-                            <div>
-                                <div class="cell-primary">@item.RecipientEmail</div>
-                                <div class="cell-meta">@item.SharedUsername</div>
-                                <div class="cell-meta">Created by @item.CreatedBy</div>
-                            </div>
-                            <span class="status-badge status-badge--@item.StatusTone">@item.StatusLabel</span>
-                        </div>
-                        <div class="stack-card__row">
-                            <span class="stack-card__label">Access mode</span>
-                            <span class="stack-card__value">@item.AccessModeLabel</span>
-                        </div>
-                        <div class="stack-card__row">
-                            <span class="stack-card__label">Expires</span>
-                            <span class="stack-card__value">@FormatStamp(item.ExpiresAtUtc)</span>
-                        </div>
+            @foreach (var item in Model.Shares)
+            {
+                <article class="share-list__row" role="listitem">
+                    <div class="share-list__cell share-list__cell--share" data-label="SHARE">
+                        <span class="share-list__primary">@item.RecipientEmail</span>
+                        <span class="share-list__meta">@item.SharedUsername</span>
+                        <span class="share-list__meta">Created by @item.CreatedBy</span>
+                    </div>
+
+                    <div class="share-list__cell" data-label="ACCESS MODE">
+                        <span class="status-badge status-badge--@item.AccessModeTone">@item.AccessModeLabel</span>
+                    </div>
+
+                    <div class="share-list__cell" data-label="CREATED ON">
+                        <span class="share-list__value">@FormatStamp(item.CreatedAtUtc)</span>
+                    </div>
+
+                    <div class="share-list__cell" data-label="EXPIRES ON">
+                        <span class="share-list__value">@FormatStamp(item.ExpiresAtUtc)</span>
                         @if (item.HasBeenAccessed && item.LastAccessedAtUtc.HasValue)
                         {
-                            <div class="stack-card__row">
-                                <span class="stack-card__label">Opened</span>
-                                <span class="stack-card__value">@FormatStamp(item.LastAccessedAtUtc.Value)</span>
-                            </div>
+                            <span class="share-list__meta">Opened @FormatStamp(item.LastAccessedAtUtc.Value)</span>
                         }
-                        <form asp-action="Revoke" method="post" class="mt-3" data-confirm="Revoke this share? The link and access code will stop working immediately.">
-                            <input type="hidden" name="id" value="@item.Id" />
-                            <button type="submit" class="btn btn-outline-danger">Revoke</button>
-                        </form>
-                    </article>
-                }
-            </div>
+                    </div>
+
+                    <div class="share-list__cell" data-label="STATUS">
+                        <span class="status-badge status-badge--@item.StatusTone">@item.StatusLabel</span>
+                    </div>
+
+                    <form asp-action="Revoke" method="post" class="share-list__actions" data-confirm="Revoke this share? The link and access code will stop working immediately.">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Revoke</button>
+                    </form>
+                </article>
+            }
         </div>
     </section>
 }

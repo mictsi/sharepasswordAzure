@@ -34,6 +34,7 @@ public abstract class SharePasswordDbContext : DbContext
         shares.Property(x => x.RecipientEmail).IsRequired().HasMaxLength(256);
         shares.Property(x => x.SharedUsername).IsRequired().HasMaxLength(256);
         shares.Property(x => x.EncryptedPassword).IsRequired();
+        shares.Property(x => x.SecretEncryptionMode).IsRequired().HasMaxLength(SecretEncryptionModes.MaxLength);
         shares.Property(x => x.Instructions).HasMaxLength(1000);
         shares.Property(x => x.AccessCodeHash).IsRequired().HasMaxLength(128);
         shares.Property(x => x.AccessToken).IsRequired().HasMaxLength(64);

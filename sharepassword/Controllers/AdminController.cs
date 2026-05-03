@@ -141,7 +141,10 @@ public class AdminController : Controller
         model.RecipientEmail = (model.RecipientEmail ?? string.Empty).Trim();
         model.SharedUsername = (model.SharedUsername ?? string.Empty).Trim();
         model.Password = (model.Password ?? string.Empty).Replace("\0", string.Empty);
+        model.ClientEncryptedPasswordPayload = (model.ClientEncryptedPasswordPayload ?? string.Empty).Trim();
         model.Instructions = (model.Instructions ?? string.Empty).Replace("\0", string.Empty);
+
+        ValidateSecretPayload(model);
 
         if (model.RequireOidcLogin && !_oidcAuthOptions.Enabled)
         {
@@ -160,13 +163,20 @@ public class AdminController : Controller
         var now = _applicationTime.UtcNow;
         var actorIdentifier = GetCurrentUserIdentifier();
         var actorType = GetCurrentActorType();
+        var secretEncryptionMode = model.UseClientEncryption
+            ? SecretEncryptionModes.ClientAesGcm
+            : SecretEncryptionModes.ServerManaged;
+        var encryptedPassword = model.UseClientEncryption
+            ? model.ClientEncryptedPasswordPayload
+            : _passwordCryptoService.Encrypt(model.Password);
 
         var share = new PasswordShare
         {
             Id = Guid.NewGuid(),
             RecipientEmail = model.RecipientEmail.Trim().ToLowerInvariant(),
             SharedUsername = model.SharedUsername.Trim(),
-            EncryptedPassword = _passwordCryptoService.Encrypt(model.Password),
+            EncryptedPassword = encryptedPassword,
+            SecretEncryptionMode = secretEncryptionMode,
             Instructions = model.Instructions,
             AccessCodeHash = _accessCodeService.HashCode(accessCode),
             AccessToken = token,
@@ -202,7 +212,7 @@ public class AdminController : Controller
             true,
             targetType: "PasswordShare",
             targetId: share.Id.ToString(),
-            details: $"Created share for {share.RecipientEmail} expiring at {_applicationTime.FormatUtcForDisplay(share.ExpiresAtUtc)} ({_applicationTime.TimeZoneId}). requireOidcLogin={share.RequireOidcLogin}");
+            details: $"Created share for {share.RecipientEmail} expiring at {_applicationTime.FormatUtcForDisplay(share.ExpiresAtUtc)} ({_applicationTime.TimeZoneId}). requireOidcLogin={share.RequireOidcLogin}; secretEncryptionMode={share.SecretEncryptionMode}");
         await _usageMetricsService.RecordAsync(DbUsageMetricsService.ShareCreatedKey, actorType, actorIdentifier, relatedId: share.Id.ToString(), details: $"Share created for {share.RecipientEmail}.");
         await _localUserService.RecordShareCreatedAsync(actorIdentifier);
 
@@ -492,5 +502,29 @@ public class AdminController : Controller
         }
 
         return model;
+    }
+
+    private void ValidateSecretPayload(AdminCreateShareViewModel model)
+    {
+        if (model.UseClientEncryption)
+        {
+            model.Password = string.Empty;
+            ModelState.Remove(nameof(model.Password));
+
+            if (!ClientEncryptedSecretPayload.TryValidate(model.ClientEncryptedPasswordPayload, out var errorMessage))
+            {
+                ModelState.AddModelError(nameof(model.ClientEncryptedPasswordPayload), errorMessage);
+                ModelState.AddModelError(string.Empty, "The secret must be encrypted in your browser before the share can be created.");
+            }
+
+            return;
+        }
+
+        model.ClientEncryptedPasswordPayload = string.Empty;
+        ModelState.Remove(nameof(model.ClientEncryptedPasswordPayload));
+        if (string.IsNullOrWhiteSpace(model.Password))
+        {
+            ModelState.AddModelError(nameof(model.Password), "Password or secret is required.");
+        }
     }
 }

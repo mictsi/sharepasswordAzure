@@ -6,6 +6,7 @@ public class PasswordShare
     public string RecipientEmail { get; set; } = string.Empty;
     public string SharedUsername { get; set; } = string.Empty;
     public string EncryptedPassword { get; set; } = string.Empty;
+    public string SecretEncryptionMode { get; set; } = SecretEncryptionModes.ServerManaged;
     public string Instructions { get; set; } = string.Empty;
     public string AccessCodeHash { get; set; } = string.Empty;
     public string AccessToken { get; set; } = string.Empty;

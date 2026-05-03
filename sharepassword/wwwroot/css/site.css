@@ -795,6 +795,63 @@ textarea.form-control {
   margin-top: 0.1rem;
 }
 
+.toggle-card--protected {
+  border-color: rgba(15, 95, 168, 0.22);
+  background: rgba(240, 249, 255, 0.92);
+}
+
+.client-encryption-panel,
+.client-decryption-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 95, 168, 0.18);
+  border-radius: 1rem;
+  background: rgba(248, 251, 255, 0.94);
+}
+
+.encryption-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 3rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(15, 95, 168, 0.22);
+  border-radius: 0.85rem;
+  background: rgba(240, 249, 255, 0.96);
+  color: #0f4c81;
+  font-weight: 700;
+}
+
+.encryption-status.is-error {
+  border-color: rgba(194, 65, 12, 0.22);
+  background: rgba(255, 245, 240, 0.98);
+  color: #9a3412;
+}
+
+.encryption-status.is-success {
+  border-color: rgba(25, 135, 84, 0.22);
+  background: rgba(240, 253, 244, 0.98);
+  color: #166534;
+}
+
+.encryption-status__spinner {
+  display: inline-block;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 0.18rem solid rgba(15, 95, 168, 0.22);
+  border-top-color: #0f5fa8;
+  border-radius: 999px;
+  animation: encryption-spin 0.8s linear infinite;
+}
+
+@keyframes encryption-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -849,6 +906,104 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.current-shares {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.current-shares__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.current-shares__header .surface-card__subtitle {
+  margin: 0;
+}
+
+.share-list {
+  padding: 0;
+  overflow: hidden;
+}
+
+.share-list__head,
+.share-list__row {
+  display: grid;
+  grid-template-columns:
+    minmax(15rem, 1.6fr)
+    minmax(10rem, 0.9fr)
+    minmax(8.5rem, 0.7fr)
+    minmax(8.5rem, 0.7fr)
+    minmax(7rem, 0.55fr)
+    minmax(5.5rem, auto);
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.share-list__head {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--sp-border);
+  color: var(--sp-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.share-list__row {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(215, 227, 242, 0.82);
+}
+
+.share-list__row:last-child {
+  border-bottom: 0;
+}
+
+.share-list__cell,
+.share-list__actions {
+  min-width: 0;
+}
+
+.share-list__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.share-list__primary,
+.share-list__value,
+.share-list__meta {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.share-list__primary {
+  color: var(--sp-text);
+  font-weight: 800;
+}
+
+.share-list__value {
+  color: var(--sp-text);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.share-list__meta {
+  color: var(--sp-text-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.share-list__actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .public-card,
@@ -1196,6 +1351,32 @@ body.action-login {
   .preset-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .share-list__head {
+    display: none;
+  }
+
+  .share-list__row {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .share-list__cell::before {
+    content: attr(data-label);
+    color: var(--sp-text-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .share-list__cell--share::before {
+    content: none;
+  }
+
+  .share-list__actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 767.98px) {
@@ -1234,6 +1415,10 @@ body.action-login {
   .preset-grid,
   .created-share-grid,
   .field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .share-list__row {
     grid-template-columns: minmax(0, 1fr);
   }
 

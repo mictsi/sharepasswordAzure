@@ -141,6 +141,7 @@ public class DbShareStore : IShareStore
             RecipientEmail = (share.RecipientEmail ?? string.Empty).Trim().ToLowerInvariant(),
             SharedUsername = share.SharedUsername ?? string.Empty,
             EncryptedPassword = share.EncryptedPassword ?? string.Empty,
+            SecretEncryptionMode = SecretEncryptionModes.Normalize(share.SecretEncryptionMode),
             Instructions = share.Instructions ?? string.Empty,
             AccessCodeHash = share.AccessCodeHash ?? string.Empty,
             AccessToken = NormalizeToken(share.AccessToken),
@@ -159,6 +160,7 @@ public class DbShareStore : IShareStore
         target.RecipientEmail = source.RecipientEmail;
         target.SharedUsername = source.SharedUsername;
         target.EncryptedPassword = source.EncryptedPassword;
+        target.SecretEncryptionMode = source.SecretEncryptionMode;
         target.Instructions = source.Instructions;
         target.AccessCodeHash = source.AccessCodeHash;
         target.AccessToken = source.AccessToken;
