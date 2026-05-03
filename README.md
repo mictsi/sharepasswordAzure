@@ -1,6 +1,11 @@
-# sharepassword
+# Share password application
 
 [![Build](https://github.com/mictsi/sharepassword/actions/workflows/build.yml/badge.svg)](https://github.com/mictsi/sharepassword/actions/workflows/build.yml)
+
+
+`sharepassword` helps teams share passwords and other sensitive text without leaving the secret in email, chat, or shared documents. An administrator creates a share with a recipient, secret text, optional instructions, and an expiration time. The app generates a unique access link and a separate one-time access code, so the link and code can be delivered through different channels.
+
+Recipients open the link, confirm their email address, and enter the access code before the secret is shown. Shares can be deleted after retrieval and expire automatically if they are not used. For higher-sensitivity secrets, the creator can protect a share with an extra password that encrypts the secret in the browser before it is sent to the server, so the stored database value is only an encrypted payload.
 
 Secure password sharing app built with ASP.NET Core (.NET 10).
 
