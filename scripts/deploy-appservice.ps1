@@ -14,65 +14,15 @@ param(
 	[Parameter(Mandatory = $true)]
 	[string]$WebAppName,
 
-	[string]$SettingsFile = "./sharepassword/appsettings.Development.json",
-	[Alias("DatabaseProvider")]
-	[string]$StorageBackend = "sqlite",
-	[string]$SqliteConnectionString = "",
-	[bool]$SqliteApplyMigrationsOnStartup = $true,
-	[string]$SqlServerConnectionString = "",
-	[bool]$SqlServerApplyMigrationsOnStartup = $true,
-	[string]$PostgresqlConnectionString = "",
-	[bool]$PostgresqlApplyMigrationsOnStartup = $true,
-
-	[string]$AzureKeyVaultVaultUri,
-
-	[string]$AzureTableAuditServiceSasUrl,
-
-	[string]$EncryptionPassphrase,
-
+	[string]$SettingsFile = "./sharepassword/appsettings.json",
 	[string]$ProjectPath = "./sharepassword/sharepassword.csproj",
 	[string]$Configuration = "Release",
 	[string]$OutputDirectory = "./artifacts/deploy/appservice",
 	[string]$Sku = "B1",
 	[string]$Runtime = "DOTNETCORE:10.0",
 	[string]$AppEnvironment = "Production",
-	[string]$ApplicationPathBase = "/",
-	[string]$ApplicationTimeZoneId = "UTC",
-	[int]$AuthenticationSessionTimeoutMinutes = 60,
-	[bool]$AuthenticationSlidingExpiration = $true,
-
-	[string]$AzureKeyVaultTenantId = "",
-	[string]$AzureKeyVaultClientId = "",
-	[string]$AzureKeyVaultClientSecret = "",
-	[string]$AzureKeyVaultSecretPrefix = "sharepassword",
-	[string]$AzureTableAuditTableName = "auditlogs",
-	[string]$AzureTableAuditPartitionKey = "audit",
-	[string]$AdminUsername = "admin",
-	[string]$AdminPasswordHash = "",
-
-	[bool]$OidcEnabled = $false,
-	[string]$OidcAuthority = "",
-	[string]$OidcClientId = "",
-	[string]$OidcClientSecret = "",
-	[string[]]$OidcScopes = @("openid", "profile", "email"),
-	[bool]$OidcRequireHttpsMetadata = $true,
-	[bool]$OidcLogTokensForTroubleshooting = $false,
-	[string]$OidcCallbackPath = "/signin-oidc",
-	[string]$OidcSignedOutCallbackPath = "/signout-callback-oidc",
-	[string]$OidcGroupClaimType = "groups",
-	[string]$OidcAdminRoleName = "Admin",
-	[string]$OidcUserRoleName = "User",
-	[string[]]$OidcAdminGroups = @(),
-	[string[]]$OidcUserGroups = @(),
-
-	[int]$ShareDefaultExpiryHours = 4,
-	[int]$ShareCleanupIntervalSeconds = 60,
-	[bool]$EnableHttpsRedirection = $false,
-
-	[bool]$ConsoleAuditLoggingEnabled = $false,
-	[string]$ConsoleAuditLoggingLevel = "INFO",
-	[string]$LoggingDefaultLevel = "Information",
-	[string]$LoggingMicrosoftAspNetCoreLevel = "Warning"
+	[int]$AppServicePort = 8080,
+	[string]$StartupCommand = ""
 )
 
 Set-StrictMode -Version Latest
@@ -109,6 +59,136 @@ function Invoke-CommandStrict {
 	}
 }
 
+function ConvertTo-AppSettingValue {
+	param(
+		[AllowNull()]
+		[object]$Value
+	)
+
+	if ($null -eq $Value) {
+		return ""
+	}
+
+	if ($Value -is [bool]) {
+		if ($Value) {
+			return "true"
+		}
+
+		return "false"
+	}
+
+	if ($Value -is [string]) {
+		return $Value
+	}
+
+	if ($Value -is [ValueType]) {
+		return [Convert]::ToString($Value, [Globalization.CultureInfo]::InvariantCulture)
+	}
+
+	return ($Value | ConvertTo-Json -Compress -Depth 64)
+}
+
+function Add-FlattenedJsonSettings {
+	param(
+		[AllowNull()]
+		[object]$Source,
+
+		[string]$Prefix = "",
+
+		[Parameter(Mandatory = $true)]
+		[System.Collections.Specialized.OrderedDictionary]$Settings
+	)
+
+	if ($null -eq $Source) {
+		if (-not [string]::IsNullOrWhiteSpace($Prefix)) {
+			$Settings[$Prefix] = ""
+		}
+
+		return
+	}
+
+	if ($Source -is [pscustomobject]) {
+		foreach ($property in $Source.PSObject.Properties) {
+			$key = if ([string]::IsNullOrWhiteSpace($Prefix)) { $property.Name } else { "${Prefix}__$($property.Name)" }
+			Add-FlattenedJsonSettings -Source $property.Value -Prefix $key -Settings $Settings
+		}
+
+		return
+	}
+
+	if (($Source -is [System.Collections.IEnumerable]) -and -not ($Source -is [string])) {
+		$index = 0
+		foreach ($item in $Source) {
+			$key = "${Prefix}__$index"
+			Add-FlattenedJsonSettings -Source $item -Prefix $key -Settings $Settings
+			$index++
+		}
+
+		return
+	}
+
+	if ([string]::IsNullOrWhiteSpace($Prefix)) {
+		throw "The settings file root must be a JSON object."
+	}
+
+	$Settings[$Prefix] = ConvertTo-AppSettingValue -Value $Source
+}
+
+function Get-ProjectAssemblyName {
+	param(
+		[Parameter(Mandatory = $true)]
+		[string]$ProjectFile
+	)
+
+	[xml]$projectXml = Get-Content -Path $ProjectFile -Raw
+	foreach ($propertyGroup in @($projectXml.Project.PropertyGroup)) {
+		$assemblyNameNode = $propertyGroup.SelectSingleNode("AssemblyName")
+		if ($null -eq $assemblyNameNode) {
+			continue
+		}
+
+		$assemblyName = [string]$assemblyNameNode.InnerText
+		if (-not [string]::IsNullOrWhiteSpace($assemblyName)) {
+			return $assemblyName
+		}
+	}
+
+	return [IO.Path]::GetFileNameWithoutExtension($ProjectFile)
+}
+
+function Get-AppServiceAppSettings {
+	param(
+		[Parameter(Mandatory = $true)]
+		[string]$ResourceGroupName,
+
+		[Parameter(Mandatory = $true)]
+		[string]$WebAppName
+	)
+
+	$json = Invoke-Az -Args @(
+		"webapp", "config", "appsettings", "list",
+		"--resource-group", $ResourceGroupName,
+		"--name", $WebAppName,
+		"--output", "json"
+	)
+
+	$result = @{}
+	$items = ($json -join "`n") | ConvertFrom-Json
+	if ($null -eq $items) {
+		return $result
+	}
+
+	foreach ($item in @($items)) {
+		if ($null -eq $item) {
+			continue
+		}
+
+		$result[[string]$item.name] = [string]$item.value
+	}
+
+	return $result
+}
+
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 	throw "Azure CLI is not installed. Install it first: https://aka.ms/installazurecliwindows"
 }
@@ -117,103 +197,23 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 	throw "dotnet SDK is not installed or not available in PATH."
 }
 
-$settingsJson = $null
-if (-not [string]::IsNullOrWhiteSpace($SettingsFile) -and (Test-Path $SettingsFile)) {
-	$settingsPath = (Resolve-Path $SettingsFile).Path
-	Write-Host "Loading settings from '$settingsPath'..." -ForegroundColor Cyan
-	$settingsJson = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
-
-	if (-not $PSBoundParameters.ContainsKey("StorageBackend") -and $settingsJson.Storage.Backend) { $StorageBackend = [string]$settingsJson.Storage.Backend }
-	if (-not $PSBoundParameters.ContainsKey("SqliteConnectionString")) { $SqliteConnectionString = [string]$settingsJson.SqliteStorage.ConnectionString }
-	if (-not $PSBoundParameters.ContainsKey("SqliteApplyMigrationsOnStartup")) { $SqliteApplyMigrationsOnStartup = [bool]$settingsJson.SqliteStorage.ApplyMigrationsOnStartup }
-	if (-not $PSBoundParameters.ContainsKey("SqlServerConnectionString")) { $SqlServerConnectionString = [string]$settingsJson.SqlServerStorage.ConnectionString }
-	if (-not $PSBoundParameters.ContainsKey("SqlServerApplyMigrationsOnStartup")) { $SqlServerApplyMigrationsOnStartup = [bool]$settingsJson.SqlServerStorage.ApplyMigrationsOnStartup }
-	if (-not $PSBoundParameters.ContainsKey("PostgresqlConnectionString")) { $PostgresqlConnectionString = [string]$settingsJson.PostgresqlStorage.ConnectionString }
-	if (-not $PSBoundParameters.ContainsKey("PostgresqlApplyMigrationsOnStartup")) { $PostgresqlApplyMigrationsOnStartup = [bool]$settingsJson.PostgresqlStorage.ApplyMigrationsOnStartup }
-
-	if (-not $PSBoundParameters.ContainsKey("AzureKeyVaultVaultUri")) { $AzureKeyVaultVaultUri = [string]$settingsJson.AzureStorage.KeyVault.VaultUri }
-	if (-not $PSBoundParameters.ContainsKey("AzureKeyVaultTenantId")) { $AzureKeyVaultTenantId = [string]$settingsJson.AzureStorage.KeyVault.TenantId }
-	if (-not $PSBoundParameters.ContainsKey("AzureKeyVaultClientId")) { $AzureKeyVaultClientId = [string]$settingsJson.AzureStorage.KeyVault.ClientId }
-	if (-not $PSBoundParameters.ContainsKey("AzureKeyVaultClientSecret")) { $AzureKeyVaultClientSecret = [string]$settingsJson.AzureStorage.KeyVault.ClientSecret }
-	if (-not $PSBoundParameters.ContainsKey("AzureKeyVaultSecretPrefix")) { $AzureKeyVaultSecretPrefix = [string]$settingsJson.AzureStorage.KeyVault.SecretPrefix }
-
-	if (-not $PSBoundParameters.ContainsKey("AzureTableAuditServiceSasUrl")) { $AzureTableAuditServiceSasUrl = [string]$settingsJson.AzureStorage.TableAudit.ServiceSasUrl }
-	if (-not $PSBoundParameters.ContainsKey("AzureTableAuditTableName")) { $AzureTableAuditTableName = [string]$settingsJson.AzureStorage.TableAudit.TableName }
-	if (-not $PSBoundParameters.ContainsKey("AzureTableAuditPartitionKey")) { $AzureTableAuditPartitionKey = [string]$settingsJson.AzureStorage.TableAudit.PartitionKey }
-
-	if (-not $PSBoundParameters.ContainsKey("AdminUsername")) { $AdminUsername = [string]$settingsJson.AdminAuth.Username }
-	if (-not $PSBoundParameters.ContainsKey("AdminPasswordHash")) { $AdminPasswordHash = [string]$settingsJson.AdminAuth.PasswordHash }
-
-	if (-not $PSBoundParameters.ContainsKey("OidcEnabled")) { $OidcEnabled = [bool]$settingsJson.OidcAuth.Enabled }
-	if (-not $PSBoundParameters.ContainsKey("OidcAuthority")) { $OidcAuthority = [string]$settingsJson.OidcAuth.Authority }
-	if (-not $PSBoundParameters.ContainsKey("OidcClientId")) { $OidcClientId = [string]$settingsJson.OidcAuth.ClientId }
-	if (-not $PSBoundParameters.ContainsKey("OidcClientSecret")) { $OidcClientSecret = [string]$settingsJson.OidcAuth.ClientSecret }
-	if (-not $PSBoundParameters.ContainsKey("OidcScopes") -and $settingsJson.OidcAuth.Scopes) { $OidcScopes = @($settingsJson.OidcAuth.Scopes | ForEach-Object { [string]$_ }) }
-	if (-not $PSBoundParameters.ContainsKey("OidcLogTokensForTroubleshooting")) { $OidcLogTokensForTroubleshooting = [bool]$settingsJson.OidcAuth.LogTokensForTroubleshooting }
-	if (-not $PSBoundParameters.ContainsKey("OidcCallbackPath")) { $OidcCallbackPath = [string]$settingsJson.OidcAuth.CallbackPath }
-	if (-not $PSBoundParameters.ContainsKey("OidcSignedOutCallbackPath")) { $OidcSignedOutCallbackPath = [string]$settingsJson.OidcAuth.SignedOutCallbackPath }
-	if (-not $PSBoundParameters.ContainsKey("OidcRequireHttpsMetadata")) { $OidcRequireHttpsMetadata = [bool]$settingsJson.OidcAuth.RequireHttpsMetadata }
-	if (-not $PSBoundParameters.ContainsKey("OidcGroupClaimType")) { $OidcGroupClaimType = [string]$settingsJson.OidcAuth.GroupClaimType }
-	if (-not $PSBoundParameters.ContainsKey("OidcAdminRoleName")) { $OidcAdminRoleName = [string]$settingsJson.OidcAuth.AdminRoleName }
-	if (-not $PSBoundParameters.ContainsKey("OidcUserRoleName")) { $OidcUserRoleName = [string]$settingsJson.OidcAuth.UserRoleName }
-	if (-not $PSBoundParameters.ContainsKey("OidcAdminGroups") -and $settingsJson.OidcAuth.AdminGroups) { $OidcAdminGroups = @($settingsJson.OidcAuth.AdminGroups | ForEach-Object { [string]$_ }) }
-	if (-not $PSBoundParameters.ContainsKey("OidcUserGroups") -and $settingsJson.OidcAuth.UserGroups) { $OidcUserGroups = @($settingsJson.OidcAuth.UserGroups | ForEach-Object { [string]$_ }) }
-
-	if (-not $PSBoundParameters.ContainsKey("EncryptionPassphrase")) { $EncryptionPassphrase = [string]$settingsJson.Encryption.Passphrase }
-	if (-not $PSBoundParameters.ContainsKey("ShareDefaultExpiryHours")) { $ShareDefaultExpiryHours = [int]$settingsJson.Share.DefaultExpiryHours }
-	if (-not $PSBoundParameters.ContainsKey("ShareCleanupIntervalSeconds")) { $ShareCleanupIntervalSeconds = [int]$settingsJson.Share.CleanupIntervalSeconds }
-	if (-not $PSBoundParameters.ContainsKey("EnableHttpsRedirection")) { $EnableHttpsRedirection = [bool]$settingsJson.Application.EnableHttpsRedirection }
-	if (-not $PSBoundParameters.ContainsKey("ApplicationTimeZoneId") -and $settingsJson.Application.TimeZoneId) { $ApplicationTimeZoneId = [string]$settingsJson.Application.TimeZoneId }
-	if (-not $PSBoundParameters.ContainsKey("ConsoleAuditLoggingEnabled")) { $ConsoleAuditLoggingEnabled = [bool]$settingsJson.ConsoleAuditLogging.Enabled }
-	if (-not $PSBoundParameters.ContainsKey("ConsoleAuditLoggingLevel")) { $ConsoleAuditLoggingLevel = [string]$settingsJson.ConsoleAuditLogging.Level }
-	if (-not $PSBoundParameters.ContainsKey("LoggingDefaultLevel") -and $settingsJson.Logging.LogLevel.Default) { $LoggingDefaultLevel = [string]$settingsJson.Logging.LogLevel.Default }
-	if (-not $PSBoundParameters.ContainsKey("LoggingMicrosoftAspNetCoreLevel") -and $settingsJson.Logging.LogLevel.'Microsoft.AspNetCore') { $LoggingMicrosoftAspNetCoreLevel = [string]$settingsJson.Logging.LogLevel.'Microsoft.AspNetCore' }
-	if (-not $PSBoundParameters.ContainsKey("ApplicationPathBase")) { $ApplicationPathBase = [string]$settingsJson.Application.PathBase }
-	if (-not $PSBoundParameters.ContainsKey("AuthenticationSessionTimeoutMinutes") -and $settingsJson.Application.AuthenticationSessionTimeoutMinutes) { $AuthenticationSessionTimeoutMinutes = [int]$settingsJson.Application.AuthenticationSessionTimeoutMinutes }
-	if (-not $PSBoundParameters.ContainsKey("AuthenticationSlidingExpiration")) { $AuthenticationSlidingExpiration = [bool]$settingsJson.Application.AuthenticationSlidingExpiration }
+if ($AppServicePort -le 0) {
+	throw "AppServicePort must be greater than 0."
 }
 
-$normalizedStorageBackend = ($StorageBackend ?? "sqlite").Trim().ToLowerInvariant()
-
-if ($normalizedStorageBackend -in @("sqlite", "sqllite")) {
-	if ([string]::IsNullOrWhiteSpace($SqliteConnectionString)) {
-		throw "SqliteStorage:ConnectionString is required when Storage:Backend=sqlite."
-	}
-}
-elseif ($normalizedStorageBackend -in @("sqlserver", "mssql")) {
-	if ([string]::IsNullOrWhiteSpace($SqlServerConnectionString)) {
-		throw "SqlServerStorage:ConnectionString is required when Storage:Backend=sqlserver."
-	}
-}
-elseif ($normalizedStorageBackend -in @("postgresql", "postgres", "npgsql")) {
-	if ([string]::IsNullOrWhiteSpace($PostgresqlConnectionString)) {
-		throw "PostgresqlStorage:ConnectionString is required when Storage:Backend=postgresql."
-	}
-}
-elseif ($normalizedStorageBackend -eq "azure") {
-	if ([string]::IsNullOrWhiteSpace($AzureKeyVaultVaultUri)) {
-		throw "AzureStorage:KeyVault:VaultUri is required when Storage:Backend=azure."
-	}
-
-	if ([string]::IsNullOrWhiteSpace($AzureTableAuditServiceSasUrl)) {
-		throw "AzureStorage:TableAudit:ServiceSasUrl is required when Storage:Backend=azure."
-	}
-}
-else {
-	throw "Unsupported StorageBackend '$StorageBackend'. Supported values are sqlite, sqlserver, postgresql, and azure."
+if ([string]::IsNullOrWhiteSpace($SettingsFile)) {
+	throw "SettingsFile is required."
 }
 
-if ([string]::IsNullOrWhiteSpace($AdminPasswordHash)) {
-	throw "AdminPasswordHash is required. Configure AdminAuth:PasswordHash in the settings file or pass -AdminPasswordHash. Generate one with ./scripts/new-admin-password-hash.ps1."
+if (-not (Test-Path $SettingsFile)) {
+	throw "Settings file '$SettingsFile' was not found."
 }
 
-if ($AuthenticationSessionTimeoutMinutes -le 0) {
-	throw "AuthenticationSessionTimeoutMinutes must be greater than 0."
-}
-
-if ([string]::IsNullOrWhiteSpace($EncryptionPassphrase)) {
-	throw "EncryptionPassphrase is required. Provide -EncryptionPassphrase or set Encryption:Passphrase in the settings file."
-}
+$settingsPath = (Resolve-Path $SettingsFile).Path
+Write-Host "Loading and flattening settings from '$settingsPath'..." -ForegroundColor Cyan
+$settingsJson = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
+$settingsObject = [ordered]@{}
+Add-FlattenedJsonSettings -Source $settingsJson -Settings $settingsObject
 
 try {
 	Invoke-Az -Args @("account", "show", "--output", "none") | Out-Null
@@ -225,6 +225,11 @@ catch {
 Invoke-Az -Args @("account", "set", "--subscription", $SubscriptionId) | Out-Null
 
 $projectFile = (Resolve-Path $ProjectPath).Path
+$assemblyName = Get-ProjectAssemblyName -ProjectFile $projectFile
+if ([string]::IsNullOrWhiteSpace($StartupCommand)) {
+	$StartupCommand = "dotnet $assemblyName.dll"
+}
+
 $outputRoot = (Resolve-Path ".").Path
 $deployRoot = Join-Path $outputRoot $OutputDirectory
 $publishDir = Join-Path $deployRoot "publish"
@@ -284,93 +289,77 @@ Invoke-Az -Args @(
 	"--http20-enabled", "true",
 	"--min-tls-version", "1.2",
 	"--ftps-state", "Disabled",
+	"--startup-file", $StartupCommand,
 	"--output", "none"
 ) | Out-Null
 
-$oidcEnabledValue = if ($OidcEnabled) { "true" } else { "false" }
-$oidcRequireHttpsMetadataValue = if ($OidcRequireHttpsMetadata) { "true" } else { "false" }
-$oidcLogTokensValue = if ($OidcLogTokensForTroubleshooting) { "true" } else { "false" }
-$httpsRedirectionValue = if ($EnableHttpsRedirection) { "true" } else { "false" }
-$consoleAuditEnabledValue = if ($ConsoleAuditLoggingEnabled) { "true" } else { "false" }
-$sqliteApplyMigrationsValue = if ($SqliteApplyMigrationsOnStartup) { "true" } else { "false" }
-$sqlServerApplyMigrationsValue = if ($SqlServerApplyMigrationsOnStartup) { "true" } else { "false" }
-$postgresqlApplyMigrationsValue = if ($PostgresqlApplyMigrationsOnStartup) { "true" } else { "false" }
-$authenticationSlidingExpirationValue = if ($AuthenticationSlidingExpiration) { "true" } else { "false" }
-
-$settings = @(
-	"ASPNETCORE_ENVIRONMENT=$AppEnvironment",
-	"Application__EnableHttpsRedirection=$httpsRedirectionValue",
-	"Application__Name=sharepassword",
-	"Application__PathBase=$ApplicationPathBase",
-	"Application__TimeZoneId=$ApplicationTimeZoneId",
-	"Application__AuthenticationSessionTimeoutMinutes=$AuthenticationSessionTimeoutMinutes",
-	"Application__AuthenticationSlidingExpiration=$authenticationSlidingExpirationValue",
-	"Kestrel__Endpoints__Http__Url=http://+:8080",
-	"Storage__Backend=$normalizedStorageBackend",
-	"SqliteStorage__ConnectionString=$SqliteConnectionString",
-	"SqliteStorage__ApplyMigrationsOnStartup=$sqliteApplyMigrationsValue",
-	"SqlServerStorage__ConnectionString=$SqlServerConnectionString",
-	"SqlServerStorage__ApplyMigrationsOnStartup=$sqlServerApplyMigrationsValue",
-	"PostgresqlStorage__ConnectionString=$PostgresqlConnectionString",
-	"PostgresqlStorage__ApplyMigrationsOnStartup=$postgresqlApplyMigrationsValue",
-	"AzureStorage__KeyVault__VaultUri=$AzureKeyVaultVaultUri",
-	"AzureStorage__KeyVault__TenantId=$AzureKeyVaultTenantId",
-	"AzureStorage__KeyVault__ClientId=$AzureKeyVaultClientId",
-	"AzureStorage__KeyVault__ClientSecret=$AzureKeyVaultClientSecret",
-	"AzureStorage__KeyVault__SecretPrefix=$AzureKeyVaultSecretPrefix",
-	"AzureStorage__TableAudit__ServiceSasUrl=$AzureTableAuditServiceSasUrl",
-	"AzureStorage__TableAudit__TableName=$AzureTableAuditTableName",
-	"AzureStorage__TableAudit__PartitionKey=$AzureTableAuditPartitionKey",
-	"AdminAuth__Username=$AdminUsername",
-	"AdminAuth__PasswordHash=$AdminPasswordHash",
-	"OidcAuth__Enabled=$oidcEnabledValue",
-	"OidcAuth__Authority=$OidcAuthority",
-	"OidcAuth__ClientId=$OidcClientId",
-	"OidcAuth__ClientSecret=$OidcClientSecret",
-	"OidcAuth__LogTokensForTroubleshooting=$oidcLogTokensValue",
-	"OidcAuth__CallbackPath=$OidcCallbackPath",
-	"OidcAuth__SignedOutCallbackPath=$OidcSignedOutCallbackPath",
-	"OidcAuth__RequireHttpsMetadata=$oidcRequireHttpsMetadataValue",
-	"OidcAuth__GroupClaimType=$OidcGroupClaimType",
-	"OidcAuth__AdminRoleName=$OidcAdminRoleName",
-	"OidcAuth__UserRoleName=$OidcUserRoleName",
-	"Encryption__Passphrase=$EncryptionPassphrase",
-	"Share__DefaultExpiryHours=$ShareDefaultExpiryHours",
-	"Share__CleanupIntervalSeconds=$ShareCleanupIntervalSeconds",
-	"ConsoleAuditLogging__Enabled=$consoleAuditEnabledValue",
-	"ConsoleAuditLogging__Level=$ConsoleAuditLoggingLevel",
-	"Logging__LogLevel__Default=$LoggingDefaultLevel",
-	"Logging__LogLevel__Microsoft__AspNetCore=$LoggingMicrosoftAspNetCoreLevel",
-	"AllowedHosts=*"
-)
-
-for ($i = 0; $i -lt $OidcScopes.Count; $i++) {
-	$settings += "OidcAuth__Scopes__$i=$($OidcScopes[$i])"
-}
-
-for ($i = 0; $i -lt $OidcAdminGroups.Count; $i++) {
-	$settings += "OidcAuth__AdminGroups__$i=$($OidcAdminGroups[$i])"
-}
-
-for ($i = 0; $i -lt $OidcUserGroups.Count; $i++) {
-	$settings += "OidcAuth__UserGroups__$i=$($OidcUserGroups[$i])"
-}
-
 Write-Host "Configuring App Service application settings..." -ForegroundColor Cyan
-$settingsObject = [ordered]@{}
-foreach ($setting in $settings) {
-	$separatorIndex = $setting.IndexOf('=')
-	if ($separatorIndex -lt 0) {
-		continue
-	}
+$managedSettingExactNames = @(
+	"ASPNETCORE_ENVIRONMENT",
+	"ASPNETCORE_URLS",
+	"WEBSITES_PORT",
+	"Kestrel__Endpoints__Http__Url",
+	"Logging__LogLevel__Microsoft__AspNetCore"
+)
+$managedSettingPrefixes = @("Kestrel__Endpoints__")
 
-	$key = $setting.Substring(0, $separatorIndex)
-	$value = $setting.Substring($separatorIndex + 1)
-	$settingsObject[$key] = $value
+foreach ($property in $settingsJson.PSObject.Properties) {
+	if (($property.Value -is [pscustomobject]) -or (($property.Value -is [System.Collections.IEnumerable]) -and -not ($property.Value -is [string]))) {
+		$managedSettingPrefixes += "$($property.Name)__"
+	}
+	else {
+		$managedSettingExactNames += $property.Name
+	}
 }
+
+foreach ($key in @($settingsObject.Keys)) {
+	if ([string]$key -like "Kestrel__Endpoints__*") {
+		$settingsObject.Remove($key)
+	}
+}
+
+$settingsObject["ASPNETCORE_ENVIRONMENT"] = $AppEnvironment
+$settingsObject["ASPNETCORE_URLS"] = "http://+:$AppServicePort"
+$settingsObject["WEBSITES_PORT"] = [string]$AppServicePort
+$settingsObject["Kestrel__Endpoints__Http__Url"] = "http://+:$AppServicePort"
 
 $settingsFilePath = Join-Path $deployRoot "appsettings.deploy.json"
-$settingsObject | ConvertTo-Json -Compress | Set-Content -Path $settingsFilePath -Encoding utf8
+$settingsFileItems = @(
+	foreach ($entry in $settingsObject.GetEnumerator()) {
+		[ordered]@{
+			name = [string]$entry.Key
+			value = [string]$entry.Value
+			slotSetting = $false
+		}
+	}
+)
+$settingsFileItems | ConvertTo-Json -Depth 4 | Set-Content -Path $settingsFilePath -Encoding utf8
+
+$existingSettings = Get-AppServiceAppSettings -ResourceGroupName $ResourceGroupName -WebAppName $WebAppName
+$staleManagedSettingNames = @()
+foreach ($existingSettingName in $existingSettings.Keys) {
+	$isManagedSetting = $managedSettingExactNames -contains $existingSettingName
+	foreach ($managedSettingPrefix in $managedSettingPrefixes) {
+		if ($existingSettingName.StartsWith($managedSettingPrefix, [StringComparison]::Ordinal)) {
+			$isManagedSetting = $true
+			break
+		}
+	}
+
+	if (-not $settingsObject.Contains($existingSettingName) -and $isManagedSetting) {
+		$staleManagedSettingNames += $existingSettingName
+	}
+}
+
+if ($staleManagedSettingNames.Count -gt 0) {
+	Write-Host "Removing stale script-managed App Service application settings..." -ForegroundColor Cyan
+	Invoke-Az -Args (@(
+		"webapp", "config", "appsettings", "delete",
+		"--resource-group", $ResourceGroupName,
+		"--name", $WebAppName,
+		"--setting-names"
+	) + $staleManagedSettingNames + @("--output", "none")) | Out-Null
+}
 
 Invoke-Az -Args @(
 	"webapp", "config", "appsettings", "set",
@@ -380,11 +369,34 @@ Invoke-Az -Args @(
 	"--output", "none"
 ) | Out-Null
 
+Write-Host "Verifying App Service application settings..." -ForegroundColor Cyan
+$appliedSettings = Get-AppServiceAppSettings -ResourceGroupName $ResourceGroupName -WebAppName $WebAppName
+$settingsVerificationFailures = @()
+foreach ($entry in $settingsObject.GetEnumerator()) {
+	$key = [string]$entry.Key
+	$expectedValue = [string]$entry.Value
+
+	if (-not $appliedSettings.ContainsKey($key)) {
+		$settingsVerificationFailures += "$key (missing)"
+		continue
+	}
+
+	if ([string]$appliedSettings[$key] -ne $expectedValue) {
+		$settingsVerificationFailures += "$key (mismatch)"
+	}
+}
+
+if ($settingsVerificationFailures.Count -gt 0) {
+	throw "App Service application settings verification failed. Missing or mismatched settings: $($settingsVerificationFailures -join ', ')"
+}
+
 Write-Host "Publishing app from '$projectFile' ($Configuration)..." -ForegroundColor Cyan
 Invoke-CommandStrict -FileName "dotnet" -Arguments @(
 	"publish", $projectFile,
 	"-c", $Configuration,
 	"-o", $publishDir,
+	"--self-contained", "false",
+	"-p:UseAppHost=false",
 	"--nologo"
 )
 
@@ -398,6 +410,7 @@ Invoke-Az -Args @(
 	"--name", $WebAppName,
 	"--src-path", $zipPath,
 	"--type", "zip",
+	"--clean", "true",
 	"--output", "none"
 ) | Out-Null
 

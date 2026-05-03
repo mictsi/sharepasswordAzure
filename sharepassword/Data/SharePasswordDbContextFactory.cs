@@ -10,15 +10,18 @@ public interface ISharePasswordDbContextFactory
 internal sealed class SharePasswordDbContextFactory<TContext> : ISharePasswordDbContextFactory
     where TContext : SharePasswordDbContext
 {
-    private readonly IDbContextFactory<TContext> _factory;
+    private readonly DbContextOptions<TContext> _options;
 
-    public SharePasswordDbContextFactory(IDbContextFactory<TContext> factory)
+    public SharePasswordDbContextFactory(DbContextOptions<TContext> options)
     {
-        _factory = factory;
+        _options = options;
     }
 
-    public async Task<SharePasswordDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
+    public Task<SharePasswordDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
     {
-        return await _factory.CreateDbContextAsync(cancellationToken);
+        var dbContext = Activator.CreateInstance(typeof(TContext), _options)
+            ?? throw new InvalidOperationException($"Could not create DbContext '{typeof(TContext).Name}'.");
+
+        return Task.FromResult((SharePasswordDbContext)dbContext);
     }
 }

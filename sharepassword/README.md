@@ -99,6 +99,7 @@ Production hardening guide: `sharepassword/CONFIGURATION.md`
 - `ConsoleAuditLogging:Enabled`: enable/disable writing audit events to console logs.
 - `ConsoleAuditLogging:Level`: console audit level (`DEBUG`, `INFO`, `ERROR`).
 - `Logging:LogLevel:*`: standard ASP.NET logging levels.
+- `Logging:LogLevel:Microsoft.EntityFrameworkCore`: EF Core logging level, default `Error`.
 - `AllowedHosts`: allowed hostnames.
 
 ### Generate an admin password hash

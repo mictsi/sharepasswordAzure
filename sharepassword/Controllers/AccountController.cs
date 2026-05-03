@@ -43,14 +43,9 @@ public class AccountController : Controller
     [HttpGet]
     public IActionResult Login(string? returnUrl = null)
     {
-        if (!IsLocalRequest())
+        if (_oidcAuthOptions.Enabled && !IsLocalRequest())
         {
-            if (_oidcAuthOptions.Enabled)
-            {
-                return RedirectToAction(nameof(ExternalLogin), new { returnUrl });
-            }
-
-            return Forbid();
+            return RedirectToAction(nameof(ExternalLogin), new { returnUrl });
         }
 
         ViewData["ReturnUrl"] = returnUrl;
@@ -62,14 +57,9 @@ public class AccountController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(AdminLoginViewModel model, string? returnUrl = null)
     {
-        if (!IsLocalRequest())
+        if (_oidcAuthOptions.Enabled && !IsLocalRequest())
         {
-            if (_oidcAuthOptions.Enabled)
-            {
-                return RedirectToAction(nameof(ExternalLogin), new { returnUrl });
-            }
-
-            return Forbid();
+            return RedirectToAction(nameof(ExternalLogin), new { returnUrl });
         }
 
         ViewData["ReturnUrl"] = returnUrl;

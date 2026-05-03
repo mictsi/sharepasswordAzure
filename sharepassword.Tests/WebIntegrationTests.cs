@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -109,6 +110,46 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         var loginResponse = await client.SendAsync(loginRequest);
 
         Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminLogin_WhenOidcDisabled_AllowsRemotePasswordLogin()
+    {
+        await using var factory = new RemoteIpWebApplicationFactory(
+            new Dictionary<string, string?>
+            {
+                ["OidcAuth:Enabled"] = "false"
+            },
+            IPAddress.Parse("203.0.113.10"));
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        var loginPageResponse = await client.GetAsync("/account/login");
+        var loginPage = await loginPageResponse.Content.ReadAsStringAsync();
+        var antiForgery = ExtractAntiForgeryToken(loginPage);
+
+        loginPageResponse.EnsureSuccessStatusCode();
+
+        var loginRequest = new HttpRequestMessage(HttpMethod.Post, "/account/login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgery,
+                ["Username"] = TestAdminAuth.Username,
+                ["Password"] = TestAdminAuth.Password
+            })
+        };
+
+        loginRequest.Headers.Referrer = new Uri("https://localhost/account/login");
+        var loginResponse = await client.SendAsync(loginRequest);
+
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, loginResponse.StatusCode);
     }
 
     [Fact]
@@ -1197,7 +1238,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     }
 }
 
-internal sealed class ConfiguredApplicationWebApplicationFactory : TestWebApplicationFactory
+internal class ConfiguredApplicationWebApplicationFactory : TestWebApplicationFactory
 {
     private readonly IReadOnlyDictionary<string, string?> _overrides;
 
@@ -1214,6 +1255,51 @@ internal sealed class ConfiguredApplicationWebApplicationFactory : TestWebApplic
         {
             config.AddInMemoryCollection(_overrides);
         });
+    }
+}
+
+internal sealed class RemoteIpWebApplicationFactory : ConfiguredApplicationWebApplicationFactory
+{
+    private readonly IPAddress _remoteIpAddress;
+
+    public RemoteIpWebApplicationFactory(IReadOnlyDictionary<string, string?> overrides, IPAddress remoteIpAddress)
+        : base(overrides)
+    {
+        _remoteIpAddress = remoteIpAddress;
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IStartupFilter>(new RemoteIpStartupFilter(_remoteIpAddress));
+        });
+    }
+}
+
+internal sealed class RemoteIpStartupFilter : IStartupFilter
+{
+    private readonly IPAddress _remoteIpAddress;
+
+    public RemoteIpStartupFilter(IPAddress remoteIpAddress)
+    {
+        _remoteIpAddress = remoteIpAddress;
+    }
+
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+    {
+        return app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                context.Connection.RemoteIpAddress = _remoteIpAddress;
+                await nextMiddleware();
+            });
+
+            next(app);
+        };
     }
 }
 

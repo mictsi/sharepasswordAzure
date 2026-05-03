@@ -72,10 +72,10 @@ A helper script is available at `scripts/deploy-appservice.ps1` to:
 
 - Create/update resource group
 - Create/update Linux App Service plan and Web App
-- Configure required app settings (environment variables)
+- Flatten `appsettings.json` into App Service application settings
 - Publish and deploy the app package
 
-By default, the script reads application settings from `sharepassword/appsettings.Development.json` (for example storage backend selection, per-backend config sections, admin credentials, OIDC, encryption, and share settings). CLI parameters still override file values when provided.
+By default, the script reads `sharepassword/appsettings.json`, flattens every JSON setting into ASP.NET Core environment variable keys, and pushes those values to App Service. The script also sets App Service-specific runtime values such as the environment, port binding, and startup command.
 
 Example:
 
