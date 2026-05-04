@@ -52,6 +52,10 @@ public class UsersController : Controller
         {
             ModelState.AddModelError(nameof(model.NewPassword), "A password is required.");
         }
+        else
+        {
+            AddPasswordPolicyErrors(nameof(model.NewPassword), model.NewPassword);
+        }
 
         if (!string.Equals(model.NewPassword, model.ConfirmPassword, StringComparison.Ordinal))
         {
@@ -140,6 +144,10 @@ public class UsersController : Controller
         if (string.IsNullOrWhiteSpace(model.NewPassword))
         {
             ModelState.AddModelError(nameof(model.NewPassword), "A new password is required.");
+        }
+        else
+        {
+            AddPasswordPolicyErrors(nameof(model.NewPassword), model.NewPassword);
         }
 
         if (!string.Equals(model.NewPassword, model.ConfirmPassword, StringComparison.Ordinal))
@@ -281,6 +289,14 @@ public class UsersController : Controller
                ?? User.FindFirstValue("oid")
                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
                ?? "unknown";
+    }
+
+    private void AddPasswordPolicyErrors(string key, string password)
+    {
+        foreach (var error in LocalUserPasswordPolicy.Validate(password))
+        {
+            ModelState.AddModelError(key, error);
+        }
     }
 
     private static bool HasConfirmedTotp(LocalUser user)

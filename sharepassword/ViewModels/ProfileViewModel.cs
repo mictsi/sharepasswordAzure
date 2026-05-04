@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SharePassword.ViewModels;
 
 public class ProfileViewModel
@@ -14,8 +16,13 @@ public class ProfileViewModel
     public DateTime? LastPasswordResetAtUtc { get; set; }
     public int TotalSuccessfulLogins { get; set; }
     public int TotalSharesCreated { get; set; }
+    [Display(Name = "Current password")]
     public string CurrentPassword { get; set; } = string.Empty;
+
+    [Display(Name = "New password")]
     public string NewPassword { get; set; } = string.Empty;
+
+    [Display(Name = "Confirm password")]
     public string ConfirmPassword { get; set; } = string.Empty;
     public string? StatusMessage { get; set; }
 }

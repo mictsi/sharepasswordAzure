@@ -239,6 +239,12 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("A password is required when creating a local user.");
         }
 
+        var passwordValidationErrors = LocalUserPasswordPolicy.Validate(request.Password);
+        if (passwordValidationErrors.Count > 0)
+        {
+            return LocalUserMutationResult.Failed(passwordValidationErrors[0]);
+        }
+
         var normalizedRoles = NormalizeRoles(request.Roles);
         if (normalizedRoles.Count == 0)
         {
@@ -383,6 +389,12 @@ public sealed class DbLocalUserService : ILocalUserService
             return LocalUserMutationResult.Failed("A new password is required.");
         }
 
+        var passwordValidationErrors = LocalUserPasswordPolicy.Validate(newPassword);
+        if (passwordValidationErrors.Count > 0)
+        {
+            return LocalUserMutationResult.Failed(passwordValidationErrors[0]);
+        }
+
         try
         {
             return await ExecuteWriteAsync(
@@ -416,6 +428,12 @@ public sealed class DbLocalUserService : ILocalUserService
         if (string.IsNullOrWhiteSpace(newPassword))
         {
             return LocalUserMutationResult.Failed("A new password is required.");
+        }
+
+        var passwordValidationErrors = LocalUserPasswordPolicy.Validate(newPassword);
+        if (passwordValidationErrors.Count > 0)
+        {
+            return LocalUserMutationResult.Failed(passwordValidationErrors[0]);
         }
 
         try

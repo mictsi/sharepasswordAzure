@@ -402,9 +402,18 @@ public class AccountController : Controller
             return View(profile);
         }
 
+        if (string.IsNullOrWhiteSpace(profile.CurrentPassword))
+        {
+            ModelState.AddModelError(nameof(profile.CurrentPassword), "The current password is required.");
+        }
+
         if (string.IsNullOrWhiteSpace(profile.NewPassword))
         {
             ModelState.AddModelError(nameof(profile.NewPassword), "A new password is required.");
+        }
+        else
+        {
+            AddPasswordPolicyErrors(nameof(profile.NewPassword), profile.NewPassword);
         }
 
         if (!string.Equals(profile.NewPassword, profile.ConfirmPassword, StringComparison.Ordinal))
@@ -600,6 +609,14 @@ public class AccountController : Controller
     private bool CanAccessAuditLogs()
     {
         return User.IsInRole(_adminRoleName) || User.IsInRole(BuiltInRoleNames.Auditor);
+    }
+
+    private void AddPasswordPolicyErrors(string key, string password)
+    {
+        foreach (var error in LocalUserPasswordPolicy.Validate(password))
+        {
+            ModelState.AddModelError(key, error);
+        }
     }
 
 }

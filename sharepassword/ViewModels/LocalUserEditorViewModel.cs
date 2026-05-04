@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SharePassword.ViewModels;
 
 public class LocalUserEditorViewModel
@@ -17,7 +19,10 @@ public class LocalUserEditorViewModel
     public DateTime? LastPasswordResetAtUtc { get; set; }
     public int TotalSuccessfulLogins { get; set; }
     public int TotalSharesCreated { get; set; }
+    [Display(Name = "New password")]
     public string NewPassword { get; set; } = string.Empty;
+
+    [Display(Name = "Confirm password")]
     public string ConfirmPassword { get; set; } = string.Empty;
     public LocalUserPasswordResetViewModel? ResetPassword { get; set; }
     public string? StatusMessage { get; set; }
@@ -29,6 +34,9 @@ public class LocalUserPasswordResetViewModel
 {
     public Guid UserId { get; set; }
     public string Username { get; set; } = string.Empty;
+    [Display(Name = "New password")]
     public string NewPassword { get; set; } = string.Empty;
+
+    [Display(Name = "Confirm password")]
     public string ConfirmPassword { get; set; } = string.Empty;
 }

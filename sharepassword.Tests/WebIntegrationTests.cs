@@ -407,6 +407,9 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         var createPage = await client.GetStringAsync("/users/create");
         var antiForgery = ExtractAntiForgeryToken(createPage);
 
+        Assert.Contains("data-generate-password", createPage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("data-password-strength=\"NewPassword\"", createPage, StringComparison.OrdinalIgnoreCase);
+
         var createRequest = new HttpRequestMessage(HttpMethod.Post, "/users/create")
         {
             Content = new FormUrlEncodedContent(
@@ -435,6 +438,42 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
         var createdUser = await localUserService.GetByUsernameAsync(username);
         Assert.NotNull(createdUser);
         Assert.True(createdUser.IsTotpRequired);
+    }
+
+    [Fact]
+    public async Task UsersCreate_WithWeakPassword_ShowsValidationAndDoesNotCreateUser()
+    {
+        using var client = CreateClient();
+        await LoginAsAdminAsync(client);
+
+        var username = $"weak-{Guid.NewGuid():N}";
+        var createPage = await client.GetStringAsync("/users/create");
+        var antiForgery = ExtractAntiForgeryToken(createPage);
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/users/create")
+        {
+            Content = new FormUrlEncodedContent(
+            [
+                new KeyValuePair<string, string>("__RequestVerificationToken", antiForgery),
+                new KeyValuePair<string, string>("Username", username),
+                new KeyValuePair<string, string>("DisplayName", "Weak User"),
+                new KeyValuePair<string, string>("Email", $"{username}@example.com"),
+                new KeyValuePair<string, string>("SelectedRoles", "User"),
+                new KeyValuePair<string, string>("NewPassword", "weak"),
+                new KeyValuePair<string, string>("ConfirmPassword", "weak")
+            ])
+        };
+
+        createRequest.Headers.Referrer = new Uri("https://localhost/users/create");
+        var createResponse = await client.SendAsync(createRequest);
+        var html = await createResponse.Content.ReadAsStringAsync();
+
+        createResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Password must be at least 12 characters long.", html, StringComparison.OrdinalIgnoreCase);
+
+        var localUserService = _factory.Services.GetRequiredService<ILocalUserService>();
+        var createdUser = await localUserService.GetByUsernameAsync(username);
+        Assert.Null(createdUser);
     }
 
     [Fact]
@@ -487,6 +526,50 @@ public class WebIntegrationTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.False(oldPasswordAuthentication.Succeeded);
         Assert.True(newPasswordAuthentication.Succeeded, newPasswordAuthentication.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Profile_WithWeakNewPassword_ShowsValidationAndKeepsExistingPassword()
+    {
+        using var client = CreateClient();
+
+        var username = $"profile-{Guid.NewGuid():N}";
+        const string currentPassword = "ProfileCurrent!123";
+        var localUserService = _factory.Services.GetRequiredService<ILocalUserService>();
+        var createResult = await localUserService.CreateAsync(new LocalUserUpsertRequest
+        {
+            Username = username,
+            DisplayName = "Profile User",
+            Email = $"{username}@example.com",
+            Roles = ["User"],
+            Password = currentPassword
+        }, TestAdminAuth.Username);
+
+        Assert.True(createResult.Succeeded, createResult.ErrorMessage);
+
+        await LoginLocalUserAndFollowToHtmlAsync(client, username, currentPassword);
+        var profilePage = await client.GetStringAsync("/account/profile");
+        var antiForgery = ExtractAntiForgeryToken(profilePage);
+
+        Assert.Contains("data-password-strength=\"NewPassword\"", profilePage, StringComparison.OrdinalIgnoreCase);
+
+        var profileResponse = await client.PostAsync("/account/profile", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiForgery,
+            ["CurrentPassword"] = currentPassword,
+            ["NewPassword"] = "weak",
+            ["ConfirmPassword"] = "weak"
+        }));
+        var html = await profileResponse.Content.ReadAsStringAsync();
+
+        profileResponse.EnsureSuccessStatusCode();
+        Assert.Contains("Password must be at least 12 characters long.", html, StringComparison.OrdinalIgnoreCase);
+
+        var oldPasswordAuthentication = await localUserService.AuthenticateAsync(username, currentPassword);
+        var weakPasswordAuthentication = await localUserService.AuthenticateAsync(username, "weak");
+
+        Assert.True(oldPasswordAuthentication.Succeeded, oldPasswordAuthentication.ErrorMessage);
+        Assert.False(weakPasswordAuthentication.Succeeded);
     }
 
     [Fact]

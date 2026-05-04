@@ -1,6 +1,8 @@
 @model SharePassword.ViewModels.LocalUserEditorViewModel
 @{
     ViewData["Title"] = "Create User";
+    var newPasswordId = Html.IdFor(model => model.NewPassword);
+    var confirmPasswordId = Html.IdFor(model => model.ConfirmPassword);
 }
 
 <div class="page-header">
@@ -22,14 +24,17 @@
             <div>
                 <label asp-for="Username" class="form-label"></label>
                 <input asp-for="Username" class="form-control" autocomplete="username" />
+                <span asp-validation-for="Username" class="text-danger"></span>
             </div>
             <div>
                 <label asp-for="DisplayName" class="form-label"></label>
                 <input asp-for="DisplayName" class="form-control" />
+                <span asp-validation-for="DisplayName" class="text-danger"></span>
             </div>
             <div>
                 <label asp-for="Email" class="form-label"></label>
                 <input asp-for="Email" class="form-control" autocomplete="email" />
+                <span asp-validation-for="Email" class="text-danger"></span>
             </div>
         </div>
 
@@ -48,11 +53,17 @@
             </div>
             <div>
                 <label asp-for="NewPassword" class="form-label"></label>
-                <input asp-for="NewPassword" class="form-control" type="password" autocomplete="new-password" />
+                <div class="password-input-row">
+                    <input asp-for="NewPassword" class="form-control" type="password" autocomplete="new-password" required data-password-policy />
+                    <button type="button" class="btn btn-outline-secondary" data-generate-password data-password-target="@newPasswordId" data-password-confirm-target="@confirmPasswordId">Generate password</button>
+                </div>
+                <span asp-validation-for="NewPassword" class="text-danger"></span>
+                <partial name="_PasswordStrengthMeter" model="@newPasswordId" />
             </div>
             <div>
                 <label asp-for="ConfirmPassword" class="form-label"></label>
-                <input asp-for="ConfirmPassword" class="form-control" type="password" autocomplete="new-password" />
+                <input asp-for="ConfirmPassword" class="form-control" type="password" autocomplete="new-password" required data-password-confirm-for="@newPasswordId" />
+                <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
             </div>
             <label class="toggle-card">
                 <input asp-for="IsDisabled" class="form-check-input" />
@@ -70,3 +81,7 @@
         <a class="btn btn-outline-secondary" asp-action="Index">Cancel</a>
     </div>
 </form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

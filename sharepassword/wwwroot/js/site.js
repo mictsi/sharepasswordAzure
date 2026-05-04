@@ -51,6 +51,191 @@
 		}, 1600);
 	}
 
+	const passwordRequirementKeys = ["length", "lowercase", "uppercase", "number", "symbol"];
+	const passwordPolicyMessage = "Use at least 12 characters with lowercase, uppercase, a number, and a symbol.";
+	const generatedPasswordLength = 20;
+	const passwordCharacterSets = {
+		lowercase: "abcdefghijkmnopqrstuvwxyz",
+		uppercase: "ABCDEFGHJKLMNPQRSTUVWXYZ",
+		number: "23456789",
+		symbol: "!@#$%^&*()-_=+[]{};:,.?"
+	};
+
+	function getRandomIndex(length) {
+		if (window.crypto && window.crypto.getRandomValues) {
+			const values = new Uint32Array(1);
+			window.crypto.getRandomValues(values);
+			return values[0] % length;
+		}
+
+		return Math.floor(Math.random() * length);
+	}
+
+	function pickCharacter(characters) {
+		return characters.charAt(getRandomIndex(characters.length));
+	}
+
+	function shuffleCharacters(characters) {
+		for (let index = characters.length - 1; index > 0; index--) {
+			const swapIndex = getRandomIndex(index + 1);
+			const current = characters[index];
+			characters[index] = characters[swapIndex];
+			characters[swapIndex] = current;
+		}
+
+		return characters;
+	}
+
+	function generatePassword() {
+		const characters = [
+			pickCharacter(passwordCharacterSets.lowercase),
+			pickCharacter(passwordCharacterSets.uppercase),
+			pickCharacter(passwordCharacterSets.number),
+			pickCharacter(passwordCharacterSets.symbol)
+		];
+		const allCharacters = passwordCharacterSets.lowercase + passwordCharacterSets.uppercase + passwordCharacterSets.number + passwordCharacterSets.symbol;
+
+		while (characters.length < generatedPasswordLength) {
+			characters.push(pickCharacter(allCharacters));
+		}
+
+		return shuffleCharacters(characters).join("");
+	}
+
+	function analyzePassword(password) {
+		const value = password || "";
+		const requirements = {
+			length: value.length >= 12,
+			lowercase: /[a-z]/.test(value),
+			uppercase: /[A-Z]/.test(value),
+			number: /\d/.test(value),
+			symbol: /[^A-Za-z0-9]/.test(value)
+		};
+		const metCount = passwordRequirementKeys.filter(function (key) {
+			return requirements[key];
+		}).length;
+
+		let label = "Enter a password";
+		if (value) {
+			label = metCount <= 2 ? "Weak" : metCount < passwordRequirementKeys.length ? "Fair" : "Strong";
+		}
+
+		return {
+			requirements,
+			metCount,
+			label,
+			isValid: metCount === passwordRequirementKeys.length
+		};
+	}
+
+	function updatePasswordMeters(input, analysis) {
+		document.querySelectorAll("[data-password-strength]").forEach(function (meter) {
+			if (meter.getAttribute("data-password-strength") !== input.id) {
+				return;
+			}
+
+			meter.setAttribute("data-strength-level", analysis.metCount.toString());
+
+			const bar = meter.querySelector("[data-password-strength-bar]");
+			if (bar) {
+				bar.style.width = (analysis.metCount / passwordRequirementKeys.length * 100) + "%";
+			}
+
+			const label = meter.querySelector("[data-password-strength-label]");
+			if (label) {
+				label.textContent = analysis.label;
+			}
+
+			const count = meter.querySelector("[data-password-strength-count]");
+			if (count) {
+				count.textContent = analysis.metCount + "/" + passwordRequirementKeys.length + " requirements";
+			}
+
+			passwordRequirementKeys.forEach(function (key) {
+				const requirement = meter.querySelector("[data-password-requirement=\"" + key + "\"]");
+				if (requirement) {
+					requirement.classList.toggle("is-met", analysis.requirements[key]);
+				}
+			});
+		});
+	}
+
+	function updatePasswordConfirmation(confirmInput) {
+		const targetId = confirmInput.getAttribute("data-password-confirm-for");
+		const target = targetId ? document.getElementById(targetId) : null;
+		if (!target || !("value" in target)) {
+			return;
+		}
+
+		confirmInput.setCustomValidity(!confirmInput.value || confirmInput.value === target.value
+			? ""
+			: "The password confirmation does not match.");
+	}
+
+	function updatePasswordInput(input) {
+		const analysis = analyzePassword(input.value);
+		input.setCustomValidity(!input.value || analysis.isValid ? "" : passwordPolicyMessage);
+		updatePasswordMeters(input, analysis);
+
+		if (input.id) {
+			document.querySelectorAll("[data-password-confirm-for=\"" + input.id + "\"]").forEach(updatePasswordConfirmation);
+		}
+	}
+
+	function dispatchInputEvents(input) {
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		input.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+
+	function setGeneratedPassword(trigger) {
+		const targetId = trigger.getAttribute("data-password-target");
+		const confirmTargetId = trigger.getAttribute("data-password-confirm-target");
+		const target = targetId ? document.getElementById(targetId) : null;
+		const confirmTarget = confirmTargetId ? document.getElementById(confirmTargetId) : null;
+		if (!target || !("value" in target)) {
+			return;
+		}
+
+		const password = generatePassword();
+		target.value = password;
+		if ("type" in target && target.type === "password") {
+			target.type = "text";
+		}
+
+		dispatchInputEvents(target);
+
+		if (confirmTarget && "value" in confirmTarget) {
+			confirmTarget.value = password;
+			if ("type" in confirmTarget && confirmTarget.type === "password") {
+				confirmTarget.type = "text";
+			}
+
+			dispatchInputEvents(confirmTarget);
+		}
+
+		target.focus();
+		if (typeof target.select === "function") {
+			target.select();
+		}
+		flashButtonLabel(trigger, "Generated");
+	}
+
+	function validatePasswordFields(form) {
+		let isValid = true;
+
+		form.querySelectorAll("[data-password-policy]").forEach(function (input) {
+			updatePasswordInput(input);
+			isValid = input.validity.valid && isValid;
+		});
+
+		form.querySelectorAll("[data-password-confirm-for]").forEach(function (input) {
+			updatePasswordConfirmation(input);
+			isValid = input.validity.valid && isValid;
+		});
+
+		return isValid;
+	}
+
 	function setSecretState(container, isRevealed) {
 		const sourceId = container.getAttribute("data-secret-source");
 		const output = container.querySelector("[data-secret-output]");
@@ -68,6 +253,13 @@
 	}
 
 	document.addEventListener("click", async function (event) {
+		const generateTrigger = event.target.closest("[data-generate-password]");
+		if (generateTrigger) {
+			event.preventDefault();
+			setGeneratedPassword(generateTrigger);
+			return;
+		}
+
 		const copyTrigger = event.target.closest("[data-copy-target], [data-copy-value]");
 		if (copyTrigger) {
 			event.preventDefault();
@@ -120,9 +312,35 @@
 		}
 	});
 
+	document.addEventListener("input", function (event) {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+
+		const passwordInput = event.target.closest("[data-password-policy]");
+		if (passwordInput) {
+			updatePasswordInput(passwordInput);
+			return;
+		}
+
+		const confirmInput = event.target.closest("[data-password-confirm-for]");
+		if (confirmInput) {
+			updatePasswordConfirmation(confirmInput);
+		}
+	});
+
 	document.addEventListener("submit", function (event) {
-		const form = event.target.closest("form[data-confirm]");
+		const form = event.target.closest("form");
 		if (!form) {
+			return;
+		}
+
+		if (!validatePasswordFields(form)) {
+			event.preventDefault();
+			if (form.reportValidity) {
+				form.reportValidity();
+			}
+
 			return;
 		}
 
@@ -135,4 +353,7 @@
 	document.querySelectorAll("[data-secret-source]").forEach(function (container) {
 		setSecretState(container, container.classList.contains("is-revealed"));
 	});
+
+	document.querySelectorAll("[data-password-policy]").forEach(updatePasswordInput);
+	document.querySelectorAll("[data-password-confirm-for]").forEach(updatePasswordConfirmation);
 })();
